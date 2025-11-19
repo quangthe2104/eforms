@@ -2,13 +2,20 @@
 
 Guide for deploying eForms to production server.
 
+## ⚠️ QUAN TRỌNG: Bảo vệ file cấu hình
+
+**File `.env` KHÔNG BAO GIỜ được commit lên Git!**
+- File `.env` đã được thêm vào `.gitignore`
+- Chỉ sử dụng `.env.example` làm mẫu
+- Sau khi clone repository, copy `.env.example` thành `.env` và cấu hình
+
 ## Pre-Deployment Checklist
 
-- [ ] Domain name configured
+- [ ] Domain name configured (e.g., eforms.domain.com)
 - [ ] SSL certificate ready
 - [ ] Server meets requirements (PHP 8.2+, MySQL, Node.js)
 - [ ] Backup strategy planned
-- [ ] Environment variables configured
+- [ ] Environment variables configured (`.env` file)
 
 ## Server Requirements
 
@@ -18,6 +25,10 @@ Guide for deploying eForms to production server.
 - **Database**: MySQL 8.0+ or MariaDB 10.6+
 - **Node.js**: 18+ (for building frontend)
 - **SSL**: Let's Encrypt or commercial certificate
+
+## 🚀 Quick Start (Sau khi đã đẩy code lên server)
+
+Xem file **QUICK-DEPLOY.md** để có hướng dẫn chi tiết từng bước.
 
 ## Deployment Steps
 
@@ -39,10 +50,12 @@ sudo apt install -y php8.2 php8.2-fpm php8.2-mysql php8.2-xml php8.2-mbstring \
 
 ```bash
 cd /var/www
-sudo git clone <repository-url> eforms
+sudo git clone https://github.com/quangthe2104/eforms.git eforms
 sudo chown -R www-data:www-data eforms
 cd eforms
 ```
+
+**Lưu ý:** Sau khi clone, file `.env` sẽ KHÔNG có trong repository. Bạn cần tạo từ `.env.example`.
 
 ### 3. Backend Setup
 
@@ -52,12 +65,14 @@ composer install --optimize-autoloader --no-dev
 cp .env.example .env
 ```
 
+**⚠️ QUAN TRỌNG:** File `.env` này sẽ KHÔNG bị commit lên Git. Mỗi lần pull code, file `.env` của bạn sẽ không bị thay đổi.
+
 Configure `.env` for production:
 ```env
 APP_NAME=eForms
 APP_ENV=production
 APP_DEBUG=false
-APP_URL=https://eforms.yourdomain.com
+APP_URL=https://eforms.domain.com
 
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
@@ -66,12 +81,12 @@ DB_DATABASE=eforms_production
 DB_USERNAME=eforms_user
 DB_PASSWORD=strong_password_here
 
-SESSION_DOMAIN=.yourdomain.com
+SESSION_DOMAIN=.domain.com
 SESSION_SECURE_COOKIE=true
 SESSION_SAME_SITE=lax
 
-SANCTUM_STATEFUL_DOMAINS=eforms.yourdomain.com
-FRONTEND_URL=https://eforms.yourdomain.com
+SANCTUM_STATEFUL_DOMAINS=eforms.domain.com
+FRONTEND_URL=https://eforms.domain.com
 ```
 
 Generate key and run migrations:
@@ -112,17 +127,17 @@ Create `/etc/nginx/sites-available/eforms`:
 ```nginx
 server {
     listen 80;
-    server_name eforms.yourdomain.com;
+    server_name eforms.domain.com;
     return 301 https://$server_name$request_uri;
 }
 
 server {
     listen 443 ssl http2;
-    server_name eforms.yourdomain.com;
+    server_name eforms.domain.com;
     root /var/www/eforms/frontend/dist;
     
-    ssl_certificate /etc/letsencrypt/live/eforms.yourdomain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/eforms.yourdomain.com/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/eforms.domain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/eforms.domain.com/privkey.pem;
     
     index index.html;
     
@@ -191,7 +206,7 @@ sudo apt install certbot python3-certbot-nginx
 
 Obtain certificate:
 ```bash
-sudo certbot --nginx -d eforms.yourdomain.com
+sudo certbot --nginx -d eforms.domain.com
 ```
 
 Auto-renewal is configured automatically.
@@ -254,7 +269,7 @@ sudo supervisorctl start eforms-queue:*
 
 ### 1. Test Application
 
-- Visit `https://eforms.yourdomain.com`
+- Visit `https://eforms.domain.com`
 - Register test account
 - Create test form
 - Submit test response
@@ -289,6 +304,8 @@ Create `/etc/logrotate.d/eforms`:
 
 ### Update Application
 
+**⚠️ LƯU Ý:** Khi pull code, file `.env` của bạn sẽ KHÔNG bị thay đổi vì đã được ignore trong Git.
+
 ```bash
 cd /var/www/eforms
 sudo git pull
@@ -303,6 +320,10 @@ npm install
 npm run build
 sudo systemctl reload nginx
 ```
+
+**Quan trọng:** 
+- File `.env` không bị thay đổi khi pull
+- Nếu có biến môi trường mới, kiểm tra `.env.example` và thêm vào `.env` thủ công
 
 ### Clear Cache
 
