@@ -78,8 +78,9 @@ export default function FormResponses() {
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center space-x-4">
           <button
-            onClick={() => navigate('/forms')}
+            onClick={() => navigate(-1)}
             className="p-2 hover:bg-gray-100 rounded-lg"
+            title="Quay lại"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>

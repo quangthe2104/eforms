@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\File;
 
 class Form extends Model
 {
@@ -15,6 +17,7 @@ class Form extends Model
         'user_id',
         'title',
         'description',
+        'thumbnail',
         'slug',
         'settings',
         'status',
@@ -26,6 +29,14 @@ class Form extends Model
         'max_responses',
         'require_login',
         'custom_thank_you_message',
+        'primary_color',
+        'secondary_color',
+        'background_color',
+        'header_image',
+        'font_family',
+        'header_font_size',
+        'question_font_size',
+        'text_font_size',
     ];
 
     protected $casts = [
@@ -89,5 +100,46 @@ class Form extends Model
 
         return true;
     }
+
+    /**
+     * Get the thumbnail URL attribute
+     */
+    public function getThumbnailUrlAttribute()
+    {
+        if (!$this->thumbnail) {
+            return null;
+        }
+
+        // If already a full URL (starts with http), return as is
+        if (strpos($this->thumbnail, 'http') === 0) {
+            return $this->thumbnail;
+        }
+
+        // If it's a base64 data URI, return as is
+        if (strpos($this->thumbnail, 'data:image') === 0) {
+            return $this->thumbnail;
+        }
+
+        // Check if it's in storage/thumbnails at project root
+        $filename = basename($this->thumbnail);
+        $newPath = base_path('storage/thumbnails/' . $filename);
+        
+        if (File::exists($newPath)) {
+            // Return URL for storage/thumbnails at project root
+            return url('storage/thumbnails/' . $filename);
+        }
+
+        // Fallback: check old location (storage/app/public/thumbnails)
+        if (Storage::disk('public')->exists($this->thumbnail)) {
+            return Storage::disk('public')->url($this->thumbnail);
+        }
+
+        return null;
+    }
+
+    /**
+     * Append thumbnail_url to model array/json
+     */
+    protected $appends = ['thumbnail_url'];
 }
 

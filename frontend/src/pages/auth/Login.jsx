@@ -17,7 +17,7 @@ export default function Login() {
     
     if (result.success) {
       toast.success('Đăng nhập thành công!')
-      navigate('/dashboard')
+      navigate('/forms')
     } else {
       toast.error(result.error || 'Đăng nhập thất bại')
     }

@@ -44,21 +44,20 @@ export const useAuthStore = create((set) => ({
     }
   },
 
-  logout: async () => {
-    try {
-      await authAPI.logout()
-    } catch (error) {
-      console.error('Logout error:', error)
-    } finally {
-      localStorage.removeItem('user')
-      localStorage.removeItem('token')
-      set({ user: null, token: null, isAuthenticated: false })
-    }
+  logout: () => {
+    // Clear client-side session immediately without calling API
+    // This avoids CSRF token issues and provides instant logout
+    localStorage.removeItem('user')
+    localStorage.removeItem('token')
+    set({ user: null, token: null, isAuthenticated: false })
   },
 
-  updateUser: (user) => {
-    localStorage.setItem('user', JSON.stringify(user))
-    set({ user })
+  updateUser: (userData) => {
+    set((state) => {
+      const updatedUser = { ...state.user, ...userData }
+      localStorage.setItem('user', JSON.stringify(updatedUser))
+      return { user: updatedUser }
+    })
   },
 
   clearError: () => set({ error: null }),

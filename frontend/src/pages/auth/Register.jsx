@@ -29,7 +29,7 @@ export default function Register() {
     
     if (result.success) {
       toast.success('Đăng ký thành công!')
-      navigate('/dashboard')
+      navigate('/forms')
     } else {
       toast.error(result.error || 'Đăng ký thất bại')
     }

@@ -143,6 +143,9 @@ class FormFieldController extends Controller
             'fields' => 'required|array',
         ]);
 
+        // Collect IDs of fields that should be kept
+        $keptFieldIds = [];
+
         foreach ($request->fields as $fieldData) {
             if (isset($fieldData['id'])) {
                 // Update existing field
@@ -152,12 +155,19 @@ class FormFieldController extends Controller
                 
                 if ($field) {
                     $field->update($fieldData);
+                    $keptFieldIds[] = $field->id;
                 }
             } else {
                 // Create new field
-                FormField::create(array_merge($fieldData, ['form_id' => $form->id]));
+                $newField = FormField::create(array_merge($fieldData, ['form_id' => $form->id]));
+                $keptFieldIds[] = $newField->id;
             }
         }
+
+        // Delete fields that are not in the kept list
+        FormField::where('form_id', $form->id)
+            ->whereNotIn('id', $keptFieldIds)
+            ->delete();
 
         return response()->json([
             'message' => 'Fields updated successfully',

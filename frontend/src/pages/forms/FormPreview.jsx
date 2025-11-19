@@ -1,53 +1,28 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { responseAPI } from '../services/api'
+import { useParams, useNavigate } from 'react-router-dom'
+import { formAPI } from '../../services/api'
 import toast from 'react-hot-toast'
-import { CheckCircle, Loader } from 'lucide-react'
+import { CheckCircle, Loader, ArrowLeft, X } from 'lucide-react'
 
-export default function PublicForm() {
-  const { slug } = useParams()
+export default function FormPreview() {
+  const { id } = useParams()
+  const navigate = useNavigate()
   const [form, setForm] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [submitting, setSubmitting] = useState(false)
-  const [submitted, setSubmitted] = useState(false)
   const [answers, setAnswers] = useState({})
   const [currentPage, setCurrentPage] = useState(0)
 
   useEffect(() => {
     fetchForm()
-  }, [slug])
-
-  // Apply theme to page
-  useEffect(() => {
-    if (form) {
-      // Set CSS variables
-      if (form.primary_color) {
-        document.documentElement.style.setProperty('--theme-primary', form.primary_color)
-      }
-      if (form.secondary_color) {
-        document.documentElement.style.setProperty('--theme-secondary', form.secondary_color)
-      }
-      if (form.background_color) {
-        document.documentElement.style.setProperty('--theme-bg', form.background_color)
-        document.body.style.backgroundColor = form.background_color
-      }
-    }
-
-    return () => {
-      // Cleanup
-      document.documentElement.style.removeProperty('--theme-primary')
-      document.documentElement.style.removeProperty('--theme-secondary')
-      document.documentElement.style.removeProperty('--theme-bg')
-      document.body.style.backgroundColor = ''
-    }
-  }, [form])
+  }, [id])
 
   const fetchForm = async () => {
     try {
-      const response = await responseAPI.getPublicForm(slug)
+      const response = await formAPI.getOne(id)
       setForm(response.data)
     } catch (error) {
-      toast.error('Không tìm thấy biểu mẫu hoặc biểu mẫu không khả dụng')
+      toast.error('Không thể tải biểu mẫu')
+      navigate('/forms')
     } finally {
       setLoading(false)
     }
@@ -59,8 +34,6 @@ export default function PublicForm() {
 
   // Split fields into pages based on section breaks
   const splitFieldsIntoPages = (fields) => {
-    if (!fields || fields.length === 0) return [[]]
-    
     const pages = []
     let currentPageFields = []
     
@@ -95,18 +68,6 @@ export default function PublicForm() {
       e.stopPropagation()
     }
     
-    // Validate current page required fields
-    const missingFields = currentPageFields.filter(
-      field => field.type !== 'section' && field.type !== 'description' && 
-               field.type !== 'image' && field.type !== 'video' &&
-               field.is_required && !answers[field.id]
-    )
-    
-    if (missingFields.length > 0) {
-      toast.error('Vui lòng điền tất cả các trường bắt buộc')
-      return
-    }
-
     if (currentPage < totalPages - 1) {
       setCurrentPage(currentPage + 1)
       window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -128,34 +89,8 @@ export default function PublicForm() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     
-    // Only submit if on last page
-    if (currentPage !== totalPages - 1) {
-      return
-    }
-    
-    // Validate all required fields across all pages
-    const allFields = form.fields
-    const missingFields = allFields.filter(
-      field => field.type !== 'section' && field.type !== 'description' && 
-               field.type !== 'image' && field.type !== 'video' &&
-               field.is_required && !answers[field.id]
-    )
-    
-    if (missingFields.length > 0) {
-      toast.error('Vui lòng điền tất cả các trường bắt buộc')
-      return
-    }
-
-    setSubmitting(true)
-    try {
-      await responseAPI.submitForm(slug, { answers })
-      setSubmitted(true)
-      toast.success('Đã gửi biểu mẫu thành công!')
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Không thể gửi biểu mẫu')
-    } finally {
-      setSubmitting(false)
-    }
+    // This is preview mode, just show a success message
+    toast.success('Đây là chế độ xem trước. Form không được gửi thực sự.')
   }
 
   const renderField = (field) => {
@@ -170,7 +105,7 @@ export default function PublicForm() {
             onChange={(e) => handleAnswerChange(field.id, e.target.value)}
             placeholder={field.placeholder || 'Câu trả lời của bạn'}
             className="input"
-            required={field.is_required}
+            disabled
           />
         )
       
@@ -182,7 +117,7 @@ export default function PublicForm() {
             placeholder={field.placeholder || 'Câu trả lời của bạn'}
             className="input"
             rows="4"
-            required={field.is_required}
+            disabled
           />
         )
       
@@ -194,7 +129,7 @@ export default function PublicForm() {
             onChange={(e) => handleAnswerChange(field.id, e.target.value)}
             placeholder={field.placeholder}
             className="input"
-            required={field.is_required}
+            disabled
           />
         )
       
@@ -206,7 +141,7 @@ export default function PublicForm() {
             onChange={(e) => handleAnswerChange(field.id, e.target.value)}
             placeholder={field.placeholder}
             className="input"
-            required={field.is_required}
+            disabled
           />
         )
       
@@ -218,7 +153,7 @@ export default function PublicForm() {
             onChange={(e) => handleAnswerChange(field.id, e.target.value)}
             placeholder={field.placeholder}
             className="input"
-            required={field.is_required}
+            disabled
           />
         )
       
@@ -230,7 +165,7 @@ export default function PublicForm() {
             onChange={(e) => handleAnswerChange(field.id, e.target.value)}
             placeholder={field.placeholder}
             className="input"
-            required={field.is_required}
+            disabled
           />
         )
       
@@ -241,7 +176,7 @@ export default function PublicForm() {
             value={value}
             onChange={(e) => handleAnswerChange(field.id, e.target.value)}
             className="input"
-            required={field.is_required}
+            disabled
           />
         )
       
@@ -252,7 +187,7 @@ export default function PublicForm() {
             value={value}
             onChange={(e) => handleAnswerChange(field.id, e.target.value)}
             className="input"
-            required={field.is_required}
+            disabled
           />
         )
       
@@ -263,7 +198,7 @@ export default function PublicForm() {
             value={value}
             onChange={(e) => handleAnswerChange(field.id, e.target.value)}
             className="input"
-            required={field.is_required}
+            disabled
           />
         )
       
@@ -273,7 +208,7 @@ export default function PublicForm() {
             value={value}
             onChange={(e) => handleAnswerChange(field.id, e.target.value)}
             className="input"
-            required={field.is_required}
+            disabled
           >
             <option value="">Chọn một tùy chọn</option>
             {field.options?.map((option, idx) => (
@@ -286,14 +221,14 @@ export default function PublicForm() {
         return (
           <div className="space-y-2">
             {field.options?.map((option, idx) => (
-              <label key={idx} className="flex items-center space-x-2 cursor-pointer">
+              <label key={idx} className="flex items-center space-x-2 cursor-not-allowed opacity-60">
                 <input
                   type="radio"
                   name={`field-${field.id}`}
                   value={option}
                   checked={value === option}
                   onChange={(e) => handleAnswerChange(field.id, e.target.value)}
-                  required={field.is_required}
+                  disabled
                   className="w-4 h-4 text-primary-600"
                 />
                 <span>{option}</span>
@@ -307,17 +242,12 @@ export default function PublicForm() {
         return (
           <div className="space-y-2">
             {field.options?.map((option, idx) => (
-              <label key={idx} className="flex items-center space-x-2 cursor-pointer">
+              <label key={idx} className="flex items-center space-x-2 cursor-not-allowed opacity-60">
                 <input
                   type="checkbox"
                   value={option}
                   checked={checkboxValues.includes(option)}
-                  onChange={(e) => {
-                    const newValues = e.target.checked
-                      ? [...checkboxValues, option]
-                      : checkboxValues.filter(v => v !== option)
-                    handleAnswerChange(field.id, newValues)
-                  }}
+                  disabled
                   className="w-4 h-4 text-primary-600"
                 />
                 <span>{option}</span>
@@ -330,9 +260,8 @@ export default function PublicForm() {
         return (
           <input
             type="file"
-            onChange={(e) => handleAnswerChange(field.id, e.target.files[0])}
-            className="input"
-            required={field.is_required}
+            disabled
+            className="input cursor-not-allowed opacity-60"
           />
         )
       
@@ -344,123 +273,14 @@ export default function PublicForm() {
               <button
                 key={star}
                 type="button"
-                onClick={() => handleAnswerChange(field.id, star)}
-                className={`text-3xl transition-colors ${
+                disabled
+                className={`text-3xl transition-colors cursor-not-allowed ${
                   star <= rating ? 'text-yellow-400' : 'text-gray-300'
                 }`}
               >
                 ★
               </button>
             ))}
-          </div>
-        )
-      
-      case 'multiple_choice_grid':
-        const gridRadioValues = value || {}
-        return field.rows && field.columns ? (
-          <div className="overflow-x-auto">
-            <table className="min-w-full border-collapse">
-              <thead>
-                <tr>
-                  <th className="border-b border-gray-300 px-4 py-3 text-left text-sm font-medium text-gray-700"></th>
-                  {field.columns.map((column, i) => (
-                    <th key={i} className="border-b border-gray-300 px-4 py-3 text-center text-sm font-medium text-gray-700">
-                      {column}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {field.rows.map((row, rowIdx) => (
-                  <tr key={rowIdx} className="hover:bg-gray-50">
-                    <td className="border-b border-gray-300 px-4 py-3 text-sm text-gray-700">
-                      {row}
-                    </td>
-                    {field.columns.map((column, colIdx) => (
-                      <td key={colIdx} className="border-b border-gray-300 px-4 py-3 text-center">
-                        <input
-                          type="radio"
-                          name={`grid-${field.id}-row-${rowIdx}`}
-                          value={column}
-                          checked={gridRadioValues[row] === column}
-                          onChange={() => {
-                            const newValues = { ...gridRadioValues, [row]: column }
-                            handleAnswerChange(field.id, newValues)
-                          }}
-                          required={field.is_required && rowIdx === 0}
-                          className="w-4 h-4"
-                        />
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : null
-      
-      case 'checkbox_grid':
-        const gridCheckboxValues = value || {}
-        return field.rows && field.columns ? (
-          <div className="overflow-x-auto">
-            <table className="min-w-full border-collapse">
-              <thead>
-                <tr>
-                  <th className="border-b border-gray-300 px-4 py-3 text-left text-sm font-medium text-gray-700"></th>
-                  {field.columns.map((column, i) => (
-                    <th key={i} className="border-b border-gray-300 px-4 py-3 text-center text-sm font-medium text-gray-700">
-                      {column}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {field.rows.map((row, rowIdx) => (
-                  <tr key={rowIdx} className="hover:bg-gray-50">
-                    <td className="border-b border-gray-300 px-4 py-3 text-sm text-gray-700">
-                      {row}
-                    </td>
-                    {field.columns.map((column, colIdx) => (
-                      <td key={colIdx} className="border-b border-gray-300 px-4 py-3 text-center">
-                        <input
-                          type="checkbox"
-                          value={column}
-                          checked={gridCheckboxValues[row]?.includes(column) || false}
-                          onChange={(e) => {
-                            const rowValues = gridCheckboxValues[row] || []
-                            const newRowValues = e.target.checked
-                              ? [...rowValues, column]
-                              : rowValues.filter(v => v !== column)
-                            const newValues = { ...gridCheckboxValues, [row]: newRowValues }
-                            handleAnswerChange(field.id, newValues)
-                          }}
-                          className="w-4 h-4"
-                        />
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : null
-      
-      case 'scale':
-        return (
-          <div className="space-y-2">
-            <input
-              type="range"
-              min="1"
-              max="10"
-              value={value || 5}
-              onChange={(e) => handleAnswerChange(field.id, e.target.value)}
-              className="w-full"
-            />
-            <div className="flex justify-between text-sm text-gray-600">
-              <span>1</span>
-              <span className="font-semibold">{value || 5}</span>
-              <span>10</span>
-            </div>
           </div>
         )
       
@@ -534,41 +354,7 @@ export default function PublicForm() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Form Not Found</h2>
-          <p className="text-gray-600">This form is not available or has been closed.</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (submitted) {
-    return (
-      <div 
-        className="min-h-screen flex items-center justify-center p-4"
-        style={{ 
-          backgroundColor: form.background_color || '#f9fafb',
-          fontFamily: form.font_family || 'system-ui, -apple-system, sans-serif'
-        }}
-      >
-        <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full text-center">
-          <CheckCircle 
-            className="w-16 h-16 mx-auto mb-4" 
-            style={{ color: form.primary_color || '#10b981' }}
-          />
-          <h2 
-            className="text-2xl font-bold mb-2"
-            style={{ 
-              color: form.primary_color || '#111827',
-              fontSize: form.header_font_size || '24px'
-            }}
-          >
-            Cảm ơn bạn!
-          </h2>
-          <p 
-            className="text-gray-600"
-            style={{ fontSize: form.text_font_size || '14px' }}
-          >
-            {form.custom_thank_you_message || 'Phản hồi của bạn đã được ghi nhận.'}
-          </p>
+          <p className="text-gray-600">This form is not available.</p>
         </div>
       </div>
     )
@@ -614,6 +400,24 @@ export default function PublicForm() {
           margin: 0.25em 0;
         }
       `}</style>
+      
+      {/* Preview Header */}
+      <div className="bg-yellow-50 border-b border-yellow-200 py-3 px-4 sticky top-0 z-50">
+        <div className="max-w-2xl mx-auto flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
+            <span className="text-sm font-medium text-yellow-800">Chế độ xem trước</span>
+          </div>
+          <button
+            onClick={() => navigate(`/forms/${id}/edit`)}
+            className="flex items-center space-x-2 px-3 py-1.5 bg-white hover:bg-gray-50 text-gray-700 rounded-lg border border-gray-300 transition-colors"
+          >
+            <X className="w-4 h-4" />
+            <span className="text-sm">Đóng</span>
+          </button>
+        </div>
+      </div>
+
       <div 
         className="min-h-screen py-8 px-4"
         style={{ 
@@ -670,27 +474,25 @@ export default function PublicForm() {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Page indicator for multi-page forms */}
+          {/* Page Progress Indicator */}
           {totalPages > 1 && (
-            <div className="bg-white rounded-lg border border-gray-200 px-6 py-3">
-              <div className="flex items-center justify-between text-sm">
-                <span 
-                  className="font-medium"
-                  style={{ color: form.primary_color || '#4285F4' }}
-                >
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">
                   Trang {currentPage + 1} / {totalPages}
                 </span>
-                <div className="flex-1 mx-4">
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div 
-                      className="h-2 rounded-full transition-all duration-300"
-                      style={{ 
-                        width: `${((currentPage + 1) / totalPages) * 100}%`,
-                        backgroundColor: form.primary_color || '#4285F4'
-                      }}
-                    ></div>
-                  </div>
-                </div>
+                <span className="text-xs text-gray-500">
+                  {Math.round(((currentPage + 1) / totalPages) * 100)}%
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                <div 
+                  className="h-2 rounded-full transition-all duration-300"
+                  style={{ 
+                    width: `${((currentPage + 1) / totalPages) * 100}%`,
+                    backgroundColor: form.primary_color || '#4285F4'
+                  }}
+                ></div>
               </div>
             </div>
           )}
@@ -738,70 +540,41 @@ export default function PublicForm() {
 
           {/* Navigation Buttons */}
           <div className="flex items-center justify-between pt-2">
-            <div className="flex items-center space-x-3">
-              {/* Previous button - show only if not on first page */}
+            <div>
               {currentPage > 0 && (
                 <button
                   type="button"
-                  onClick={(e) => handlePreviousPage(e)}
-                  className="btn flex items-center justify-center space-x-2 transition-all px-6 py-2.5 rounded font-medium border"
-                  style={{
-                    borderColor: form.primary_color || '#4285F4',
-                    color: form.primary_color || '#4285F4',
-                    backgroundColor: '#ffffff'
-                  }}
+                  onClick={handlePreviousPage}
+                  className="px-6 py-2 text-gray-700 border border-gray-300 rounded hover:bg-gray-50 transition-colors"
                 >
-                  <span>Quay lại</span>
+                  Trước
                 </button>
               )}
-
-              {/* Next/Submit button */}
+            </div>
+            <div className="flex items-center space-x-3">
               {currentPage < totalPages - 1 ? (
                 <button
                   type="button"
-                  onClick={(e) => handleNextPage(e)}
-                  className="btn flex items-center justify-center space-x-2 transition-all px-8 py-2.5 rounded font-medium"
+                  onClick={handleNextPage}
+                  className="px-6 py-2 text-white rounded transition-colors"
                   style={{
-                    backgroundColor: form.primary_color || '#4285F4',
-                    color: '#ffffff'
+                    backgroundColor: form.primary_color || '#4285F4'
                   }}
                 >
-                  <span>Tiếp theo</span>
+                  Tiếp theo
                 </button>
               ) : (
                 <button
                   type="submit"
-                  disabled={submitting}
-                  className="btn flex items-center justify-center space-x-2 transition-all px-8 py-2.5 rounded font-medium"
+                  className="px-6 py-2 text-white rounded transition-colors"
                   style={{
-                    backgroundColor: form.primary_color || '#4285F4',
-                    color: '#ffffff',
-                    opacity: submitting ? 0.7 : 1
+                    backgroundColor: form.primary_color || '#4285F4'
                   }}
                 >
-                  {submitting ? (
-                    <>
-                      <Loader className="w-4 h-4 animate-spin" />
-                      <span>Đang gửi...</span>
-                    </>
-                  ) : (
-                    <span>Gửi</span>
-                  )}
+                  Gửi (Xem trước)
                 </button>
               )}
             </div>
-
-            {/* Clear answers button */}
-            <button
-              type="button"
-              onClick={() => setAnswers({})}
-              className="text-sm font-medium transition-colors"
-              style={{
-                color: form.primary_color || '#4285F4'
-              }}
-            >
-              Xóa hết câu trả lời
-            </button>
           </div>
         </form>
 

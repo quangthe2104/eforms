@@ -54,7 +54,15 @@ class FormResponseController extends Controller
         $fields = $form->fields;
         $rules = [];
         
+        // Field types that don't require answers
+        $nonAnswerTypes = ['section', 'description', 'image', 'video'];
+        
         foreach ($fields as $field) {
+            // Skip validation for non-answer field types
+            if (in_array($field->type, $nonAnswerTypes)) {
+                continue;
+            }
+            
             $fieldRules = [];
             
             if ($field->is_required) {
@@ -101,6 +109,11 @@ class FormResponseController extends Controller
                 $field = $fields->firstWhere('id', $fieldId);
                 
                 if (!$field) {
+                    continue;
+                }
+                
+                // Skip saving answers for non-answer field types
+                if (in_array($field->type, $nonAnswerTypes)) {
                     continue;
                 }
 

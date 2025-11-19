@@ -14,11 +14,22 @@ class FormResponsesExport implements FromCollection, WithHeadings, WithMapping, 
 {
     protected $form;
     protected $responseId;
+    protected $nonAnswerTypes = ['section', 'description', 'image', 'video'];
 
     public function __construct(Form $form, $responseId = null)
     {
         $this->form = $form;
         $this->responseId = $responseId;
+    }
+    
+    /**
+     * Get fields that should be included in export (exclude non-answer types)
+     */
+    protected function getExportableFields()
+    {
+        return $this->form->fields->filter(function($field) {
+            return !in_array($field->type, $this->nonAnswerTypes);
+        });
     }
 
     /**
@@ -47,8 +58,8 @@ class FormResponsesExport implements FromCollection, WithHeadings, WithMapping, 
             $response->ip_address,
         ];
 
-        // Add answers for each field
-        foreach ($this->form->fields as $field) {
+        // Add answers for each field (exclude non-answer types)
+        foreach ($this->getExportableFields() as $field) {
             $answer = $response->answers->firstWhere('field_id', $field->id);
             
             if ($answer) {
@@ -78,8 +89,8 @@ class FormResponsesExport implements FromCollection, WithHeadings, WithMapping, 
             'IP Address',
         ];
 
-        // Add field labels as headings
-        foreach ($this->form->fields as $field) {
+        // Add field labels as headings (exclude non-answer types)
+        foreach ($this->getExportableFields() as $field) {
             $headings[] = $field->label;
         }
 

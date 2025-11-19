@@ -97,9 +97,21 @@ class FormController extends Controller
             'max_responses' => 'nullable|integer|min:1',
             'require_login' => 'sometimes|boolean',
             'custom_thank_you_message' => 'nullable|string',
+            'thumbnail' => 'nullable|string', // Base64 image data
+            'primary_color' => 'nullable|string|max:255',
+            'secondary_color' => 'nullable|string|max:255',
+            'background_color' => 'nullable|string|max:255',
+            'header_image' => 'nullable|string', // Base64 image data
+            'font_family' => 'nullable|string|max:255',
+            'header_font_size' => 'nullable|string|max:255',
+            'question_font_size' => 'nullable|string|max:255',
+            'text_font_size' => 'nullable|string|max:255',
         ]);
 
         $form->update($request->all());
+        
+        // Force refresh from database, not cache
+        $form = Form::find($form->id);
 
         return response()->json([
             'message' => 'Form updated successfully',

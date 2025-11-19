@@ -2,6 +2,46 @@
 
 All notable changes to eForms project will be documented in this file.
 
+## [1.1.0] - 2025-11-18
+
+### Added - eForms UI (with Brand Colors)
+- **New Form Builder Interface**: Complete redesign with modern UI/UX
+- **EditableTitle Component**: Click-to-edit title and description with smooth transitions
+- **FormQuestion Component**: Card-based questions with inline editing
+- **FormSidebar Component**: Fixed sidebar with icon buttons for adding fields
+- **Duplicate Field**: Added ability to duplicate questions quickly
+- **Active/Edit Mode**: Click questions to edit, click outside to deactivate
+- **Type Selector**: Dropdown to change question type on the fly
+- **Inline Options Editor**: Edit options directly in question card
+- **Grid Editor**: Full support for editing grid rows and columns
+- **Toggle Switch**: Modern toggle for required field setting
+- **Blue Theme**: Brand color scheme with primary blue (#0284c7) and gray background
+- **Smooth Animations**: 200ms transitions on all interactions
+- **Responsive Sidebar**: Fixed right on desktop, bottom-right on mobile
+
+### Changed
+- Replaced old FormBuilder with new FormBuilder
+- Updated routing to use new builder component
+- Enhanced form store with duplicateField function
+- Improved drag & drop with better activation constraints
+
+### UI/UX Improvements
+- Click-to-edit title/description (no always-visible input fields)
+- Card-based question layout
+- Inline editing instead of separate sidebar panel
+- Icon-based field type selector
+- Hover effects and focus states throughout
+- Professional animations and transitions
+- Better visual hierarchy
+- Improved mobile experience
+
+### Technical
+- Added 40+ new CSS classes for eForms UI
+- Optimized re-renders with proper state management
+- Click-outside detection for better UX
+- Lazy rendering for performance
+- Event delegation for efficiency
+
 ## [1.0.0] - 2025-01-17
 
 ### Added

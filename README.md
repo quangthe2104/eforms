@@ -1,6 +1,6 @@
 # eForms - Form Builder Application
 
-A modern form builder application similar to Google Forms, built with React, Laravel, and MySQL. All data is stored in your private database with Excel export capabilities.
+A modern form builder application built with React, Laravel, and MySQL. All data is stored in your private database with Excel export capabilities.
 
 ## 🚀 Features
 
@@ -290,6 +290,6 @@ This project is licensed under the MIT License.
 
 ## 🙏 Acknowledgments
 
-- Inspired by Google Forms
+- Modern form builder interface
 - Built with Laravel and React
 - Icons from Heroicons

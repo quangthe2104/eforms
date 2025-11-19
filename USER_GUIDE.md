@@ -16,7 +16,7 @@
 
 ## Giới thiệu
 
-eForms là một hệ thống tạo biểu mẫu trực tuyến tương tự Google Forms, cho phép bạn:
+eForms là một hệ thống tạo biểu mẫu trực tuyến, cho phép bạn:
 - ✅ Tạo form với nhiều loại trường khác nhau
 - ✅ Thu thập responses từ người dùng
 - ✅ Export dữ liệu ra file Excel

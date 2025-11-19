@@ -235,7 +235,9 @@ export default function ResponseDetail() {
       <div className="card">
         <h2 className="text-lg font-semibold text-gray-900 mb-6">Câu Trả Lời</h2>
         <div className="space-y-8">
-          {form?.fields?.map((field, index) => {
+          {form?.fields
+            ?.filter(field => !['section', 'description', 'image', 'video'].includes(field.type))
+            ?.map((field, index) => {
             const answer = response?.answers?.find(a => a.field_id === field.id)
             
             return (

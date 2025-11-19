@@ -73,7 +73,16 @@ export const authAPI = {
     await getCsrfCookie()
     return api.post('/login', data)
   },
-  logout: () => api.post('/logout'),
+  logout: async () => {
+    try {
+      await getCsrfCookie()
+      return api.post('/logout')
+    } catch (error) {
+      // Ignore CSRF errors, just clear client-side session
+      console.log('Logout API error (ignored):', error.message)
+      return Promise.resolve()
+    }
+  },
   me: () => api.get('/me'),
   updateProfile: (data) => api.put('/profile', data),
   changePassword: (data) => api.post('/change-password', data),

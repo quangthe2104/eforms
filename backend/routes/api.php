@@ -7,6 +7,7 @@ use App\Http\Controllers\FormController;
 use App\Http\Controllers\FormFieldController;
 use App\Http\Controllers\FormResponseController;
 use App\Http\Controllers\ExportController;
+use App\Http\Controllers\ThumbnailController;
 
 /*
 |--------------------------------------------------------------------------
@@ -34,6 +35,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('forms', FormController::class);
     Route::post('/forms/{form}/duplicate', [FormController::class, 'duplicate']);
     Route::get('/forms/{form}/statistics', [FormController::class, 'statistics']);
+    Route::post('/forms/{form}/thumbnail', [ThumbnailController::class, 'upload']);
 
     // Form field routes
     Route::post('/forms/{form}/fields', [FormFieldController::class, 'store']);
