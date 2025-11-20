@@ -10,7 +10,7 @@ Mở file `deploy.sh` và chỉnh sửa các thông tin sau ở đầu file:
 
 ```bash
 DOMAIN="eforms.domain.com"      # Thay bằng domain của bạn
-DB_NAME="eforms_production"      # Tên database
+DB_NAME="eforms_production"      # Tên databaseà,
 DB_USER="eforms_user"            # User database
 DB_PASS=""                        # Để trống, sẽ hỏi khi chạy
 PROJECT_DIR="/var/www/eforms"    # Đường dẫn project
@@ -24,8 +24,25 @@ PHP_VERSION="8.2"                # Phiên bản PHP
    git clone https://github.com/quangthe2104/eforms.git /var/www/eforms
    ```
 
-2. **Đã cài đặt các phần mềm cần thiết:**
-   - PHP 8.2+ với các extensions
+2. **Cài đặt các phần mềm cần thiết:**
+   
+   **Cách 1: Tự động kiểm tra và cài đặt (Khuyến nghị)**
+   ```bash
+   cd /var/www/eforms
+   chmod +x check-and-install-requirements.sh
+   sudo ./check-and-install-requirements.sh
+   ```
+   
+   Script này sẽ tự động:
+   - ✅ Kiểm tra và cài đặt PHP 8.2+ với tất cả extensions cần thiết
+   - ✅ Kiểm tra và cài đặt Composer
+   - ✅ Kiểm tra và cài đặt Node.js 18+ và npm
+   - ✅ Kiểm tra và cài đặt MySQL
+   - ✅ Kiểm tra và cài đặt Nginx
+   - ✅ Kiểm tra và cài đặt Certbot (cho SSL)
+   
+   **Cách 2: Cài đặt thủ công**
+   - PHP 8.2+ với các extensions (bcmath, ctype, curl, fileinfo, json, mbstring, openssl, pdo, pdo_mysql, tokenizer, xml, zip, gd, exif)
    - Composer
    - Node.js 18+ và npm
    - MySQL
@@ -36,15 +53,28 @@ PHP_VERSION="8.2"                # Phiên bản PHP
 
 ## 🎯 Cách sử dụng
 
-### Bước 1: Cấp quyền thực thi
+### Bước 1: Cài đặt phần mềm cần thiết (Chạy lần đầu tiên)
 
 ```bash
-chmod +x deploy.sh
+# Cấp quyền thực thi
+chmod +x check-and-install-requirements.sh
+
+# Chạy script kiểm tra và cài đặt
+sudo ./check-and-install-requirements.sh
 ```
 
-### Bước 2: Chạy script
+**Lưu ý:** Bước này chỉ cần chạy **1 lần duy nhất** khi setup server lần đầu. Nếu đã cài đặt đầy đủ phần mềm rồi thì có thể bỏ qua.
+
+### Bước 2: Cấu hình và chạy deploy
 
 ```bash
+# 1. Mở file deploy.sh và chỉnh sửa thông tin (domain, database, v.v.)
+nano deploy.sh
+
+# 2. Cấp quyền thực thi
+chmod +x deploy.sh
+
+# 3. Chạy script deploy
 sudo ./deploy.sh
 ```
 
