@@ -1,13 +1,13 @@
 import { useEffect } from 'react'
 
-/** Calls `onDismiss` on a mousedown outside `ref` or on Escape while `open`. */
+/** Calls `onDismiss(reason)` on a mousedown outside `ref` ('outside') or on Escape ('escape') while `open`. */
 export default function useDismiss(ref, open, onDismiss) {
   useEffect(() => {
     if (!open) return
     const onMouseDown = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) onDismiss()
+      if (ref.current && !ref.current.contains(e.target)) onDismiss('outside')
     }
-    const onKey = (e) => e.key === 'Escape' && onDismiss()
+    const onKey = (e) => e.key === 'Escape' && onDismiss('escape')
     document.addEventListener('mousedown', onMouseDown)
     document.addEventListener('keydown', onKey)
     return () => {

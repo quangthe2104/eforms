@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import RichTextEditor from './RichTextEditor'
 
-export default function EditableTitle({ title, description, onChange, theme, className = '' }) {
+export default function EditableTitle({ title, description, onChange, theme, className = '', readOnly = false }) {
   const [editingTitle, setEditingTitle] = useState(false)
   const [editingDescription, setEditingDescription] = useState(false)
   const [localTitle, setLocalTitle] = useState(title || '')
@@ -85,7 +85,7 @@ export default function EditableTitle({ title, description, onChange, theme, cla
           }}
         ></div>
         <div className="eforms-header-content">
-        {editingTitle ? (
+        {editingTitle && !readOnly ? (
           <div className="eforms-input-wrapper">
             <input
               ref={titleRef}
@@ -107,7 +107,7 @@ export default function EditableTitle({ title, description, onChange, theme, cla
         ) : (
           <h1
             className="eforms-title"
-            onClick={() => setEditingTitle(true)}
+            onClick={readOnly ? undefined : () => setEditingTitle(true)}
             style={{
               color: theme?.primary_color,
               fontSize: theme?.header_font_size,
@@ -117,7 +117,15 @@ export default function EditableTitle({ title, description, onChange, theme, cla
           </h1>
         )}
 
-        {editingDescription ? (
+        {readOnly ? (
+          localDescription && (
+            <div
+              className="eforms-description"
+              style={{ fontSize: theme?.text_font_size }}
+              dangerouslySetInnerHTML={{ __html: localDescription }}
+            />
+          )
+        ) : editingDescription ? (
           <div className="eforms-input-wrapper" data-prop="description">
             <RichTextEditor
               value={localDescription}

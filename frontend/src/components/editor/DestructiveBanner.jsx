@@ -8,7 +8,7 @@ export default function DestructiveBanner({ count, changes, onApprove, onRevert 
     <div data-destructive-banner role="alert" className="sticky top-28 z-40 bg-amber-50 border-b border-amber-200">
       <div className="max-w-5xl mx-auto px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-amber-900">
         <AlertTriangle className="w-4 h-4 flex-shrink-0 text-amber-600" />
-        <span className="flex-1 min-w-[12rem]">
+        <span className="flex-1 min-w-[12rem] [overflow-wrap:anywhere]">
           Thay đổi này ảnh hưởng tới {count} câu trả lời đã thu: {shown}{more}
         </span>
         <div className="flex items-center gap-2">

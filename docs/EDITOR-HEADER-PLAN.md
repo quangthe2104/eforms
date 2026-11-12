@@ -16,7 +16,7 @@ File này là nguồn duy nhất về phạm vi, quyết định và tiến đ�
 | 4 | Frontend: lưu tự động, chỉ báo lưu, cảnh báo thay đổi phá dữ liệu, hoàn tác/làm lại | Xong (12/11/2026) |
 | 5 | Frontend: đồng bộ trực tiếp (polling) + hiện diện | Xong (12/11/2026) |
 | 6 | Frontend: popup Chia sẻ, trang nhận lời mời, đăng ký theo lời mời, danh sách form được chia sẻ | Xong (12/11/2026) |
-| 7 | Chi tiết giao diện (ô loại câu hỏi, tooltip, mobile) + kiểm thử toàn bộ | Chưa làm |
+| 7 | Chi tiết giao diện (ô loại câu hỏi, tooltip, mobile) + kiểm thử toàn bộ | Xong (12/11/2026) |
 
 ## 2. Môi trường local
 
@@ -403,6 +403,16 @@ Quy tắc:
 - Kiểm thử: `tools/e2e-share.mjs` (77 kiểm tra, 5–6 phiên: chủ `user 1`, `e2e-share-b` (Người chỉnh sửa → Người xem), `e2e-share-d` (chủ thứ hai/sai tài khoản), người mới đăng ký và người "đã có tài khoản" theo từng lần chạy – bị xóa sau khi chạy; mật khẩu biết trước qua `tools/share-fixture.php`, cũng dùng để làm hết hạn lời mời). Clipboard trong Chrome headless không cấp quyền được nên script thay `navigator.clipboard` để đọc lại nội dung app ghi. `tools/run-e2e-all.ps1` chạy lần lượt `test-ops` + 6 script E2E, in một dòng mỗi script (log ở `tools/out/<script>.log`).
 - Ghi chú: `GET /invitations/{token}` có throttle 30/phút/IP. Lúc đầu mỗi trang (Invite, Login, Register, cả lần chạy đôi của StrictMode) gọi lại API này nên chạy E2E 2 lần liền bị 429 và bước đăng nhập theo lời mời hỏng. Đã sửa: `useInvitation` dùng chung một request cho mỗi token trong 60 giây (lỗi thì không giữ), 429 có thông báo riêng "Thử lại sau ít phút". Sau khi sửa, chạy liền 2 lần đều qua, không còn 429.
 
+**Đã làm ở Giai đoạn 7 – quyết định và lệch:**
+
+- **Ô chọn loại câu hỏi (4.10):** `.eforms-type-selector` của `FormQuestion` chỉ render khi `isActive`. Bỏ chọn (bấm ra ngoài) thì ô biến mất và dropdown đóng; Esc cũng đóng dropdown. `RandomSectionCard` không có ô chọn loại (các điều khiển đã chỉ hiện khi đang chọn); không thẻ nào khác có ô tương tự.
+- **Lỗi chế độ sửa nhãn (ghi chú Giai đoạn 5):** `FormQuestion` đặt lại `editingQuestion`, `editingOptionIndex`, dropdown khi `isActive` thành false, nên chọn lại câu hiện nhãn chứ không mở thẳng ô nhập.
+- **Người xem:** tab Câu hỏi có dòng "Bạn đang xem biểu mẫu ở chế độ chỉ xem…" (`data-readonly-note`), `.eforms-main[inert]` + CSS bỏ bóng/viền khi rê chuột và con trỏ mặc định, thẻ tiêu đề không còn chuyển sang ô nhập (`EditableTitle readOnly`, ẩn "Mô tả biểu mẫu" khi trống), `isActive` luôn false nên không có ô chọn loại/tay kéo/chân thẻ. Khi vai trò đổi trực tiếp thành Người xem (Giai đoạn 6), layout bỏ câu đang chọn và đóng panel giao diện. Tab Cài đặt: nhãn "Chỉ xem" + dòng giải thích, vẫn `<fieldset disabled>`.
+- **Tooltip/truy cập:** `Tooltip` lật lên trên khi sát đáy màn hình, giới hạn bề rộng (cắt bằng dấu …). Không còn `title` gốc ở header, thanh công cụ bên, chân thẻ câu hỏi/phần ngẫu nhiên, nút xóa phiên bản (chuyển sang `aria-label` + `Tooltip`; E2E cũ đổi selector `button[title=…]` → `button[aria-label=…]`). Còn `title` ở ô màu `FormTheme`, `FormList`, `FormResponses`, trang công khai (ngoài phạm vi). Nút tài khoản có tooltip. Vòng focus `focus-visible` cho nút header, logo, tab, mục menu. Esc đóng menu ⋮, popup xuất bản, menu tài khoản (trả focus về nút mở), popup Chia sẻ, panel giao diện (mới thêm Esc), dropdown loại câu hỏi.
+- **Mobile:** 390px theo 4.1 (logo, tiêu đề, chỉ báo lưu, Hoàn tác/Làm lại, xuất bản, ⋮). **Lệch:** 768–1023px dùng bộ nút desktop nhưng ẩn nhãn trạng thái (chỉ hiện từ 1024px, nút "Xuất bản/Đã xuất bản" vẫn cho biết trạng thái) vì ở 768px tiêu đề chỉ còn 36px. Thanh công cụ dưới trên mobile thu nút còn 44px để vừa 390px. Popup xuất bản giới hạn `100vw - 1rem`, thanh cảnh báo phá dữ liệu xuống dòng gọn, panel giao diện `max-w-full`. Không cuộn ngang ở trang sửa, câu trả lời, cài đặt, danh sách form, lời mời, đăng nhập, đăng ký (390 và 768).
+- **Kiểm thử:** `tools/e2e-polish.mjs` (62 kiểm tra). `tools/run-e2e-all.ps1` chạy đủ 3 script đơn vị + 9 script E2E (kể cả `e2e-public`, `e2e-survey` của đợt Phần ngẫu nhiên).
+- **Sự cố DB local (12/11/2026, đã khắc phục):** chạy PHPUnit khi đang có `config:cache` (dùng cho Apache) khiến test bỏ qua cấu hình SQLite trong `phpunit.xml` và `RefreshDatabase` xóa `eforms_db`. Đã khôi phục từ `backup-before-phase2.sql` + chạy lại migration Giai đoạn 2–6 (mọi dữ liệu tạo sau 19:16 ngày 12/11 bị mất – form E2E vốn bị xóa sau mỗi lần chạy, tài khoản E2E được script tạo lại; bản sau khôi phục: `backend/storage/app/backup-phase7-restored.sql`). Chặn tái diễn: `phpunit.xml` đặt `APP_CONFIG_CACHE=bootstrap/cache/config.testing.php` (test không đọc cache của Apache) và `tests/TestCase.php` dừng nếu DB không phải SQLite `:memory:`. Script `tools/restore-db.ps1` dựng lại DB từ một bản dump.
+
 ---
 
 ## 6. Thứ tự làm và kiểm thử
@@ -422,17 +432,39 @@ Quy tắc:
 
 ---
 
-## 7. Câu hỏi còn mở / rủi ro
+## 7. Câu hỏi còn mở / rủi ro (danh sách cuối, sau Giai đoạn 7)
 
-- **SMTP production:** cần thông tin máy chủ gửi mail (host, port, tài khoản, địa chỉ gửi) để bật gửi email. Trước khi có, hệ thống vẫn chạy bằng link mời.
-- **Sửa form đã xuất bản:** mặc định thay đổi có hiệu lực ngay với người trả lời (giống hiện tại). Nếu muốn kiểu "bản nháp riêng, bấm Xuất bản lại mới áp dụng" thì đó là phạm vi riêng, lớn hơn.
-- **Đồng bộ bằng polling:** độ trễ khoảng 2–3 giây, và mỗi người đang mở form gửi một request mỗi 2,5 giây. Ổn với quy mô hiện tại. Khi cần tức thời hoặc nhiều người cùng lúc thì chuyển sang Reverb.
-- **Cùng sửa một ô văn bản:** ai lưu sau thắng ở mức cả ô, không gộp từng ký tự như Google Docs.
-- **Dữ liệu cũ:** migration gán Chủ sở hữu cho mọi form hiện có. Cần sao lưu DB trước khi chạy trên production. (Local đã chạy 12/11/2026, bản sao lưu ở `backend/storage/app/backup-before-phase1.sql`.)
-- **Tìm người dùng:** mọi người dùng đăng nhập đều tìm được tên/email người khác (≥3 ký tự, 8 kết quả, có throttle). Nếu cần kín hơn thì bắt buộc `form_id` hoặc chỉ khớp email đầy đủ.
-- **Gửi email:** gửi đồng bộ trong request; lỗi SMTP chỉ ghi log và trả `email_sent:false`. Nếu SMTP chậm thì chuyển sang queue.
-- **Lựa chọn của câu hỏi gộp theo cả danh sách** (Giai đoạn 2): `options/rows/columns` là mảng chuỗi không id, nên ai lưu sau thắng cả danh sách thay vì từng lựa chọn như mục 4.7. Frontend nên gửi `options` ngay khi mất focus ô lựa chọn để thu hẹp cửa sổ xung đột.
-- **Lịch chạy:** cần cron `php artisan schedule:run` mỗi phút trên server để `forms:prune-changes` (mỗi giờ) chạy. Không có cron thì nhật ký chỉ lớn dần, không sai chức năng.
-- **MySQL mặc định MyISAM** trên WAMP local: các migration sau này nên khai báo `$table->engine('InnoDB')` (hoặc đặt engine mặc định của server là InnoDB). Production cần kiểm tra `@@default_storage_engine`. Local đã chạy migration Giai đoạn 2 ngày 12/11/2026, bản sao lưu `backend/storage/app/backup-before-phase2.sql`.
-- **`respondent_limit.field_keys`** không được kiểm tra khi câu hỏi bị xóa (giống trước đây).
-- **Apache/WAMP local thỉnh thoảng không nạp `.env`** khi có nhiều request song song (log: `production.ERROR: No application encryption key`, kết nối `sqlite`) → 500 ngẫu nhiên, làm E2E lỗi chập chờn (gặp 1 lần ở `e2e-phase4` ngày 12/11/2026, chạy lại thì qua). Cách chữa thường dùng: `php artisan config:cache` (nhớ chạy lại sau khi sửa `.env`). Polling ở Giai đoạn 5 sẽ làm lỗi này hay gặp hơn.
+**Cần làm khi đưa lên production**
+
+- **Sao lưu DB trước khi chạy migration:** migration gán Chủ sở hữu cho mọi form hiện có (`form_collaborators`), thêm `revision`/nhật ký, gộp `accept_responses` vào `status`.
+- **MyISAM → InnoDB:** MySQL WAMP local mặc định MyISAM. Production cần kiểm tra `@@default_storage_engine`; migration `2026_11_13_000002` chuyển bảng cộng tác sang InnoDB, bảng mới khai báo `engine('InnoDB')`. Migration sau này nên làm như vậy.
+- **Cron:** cần `php artisan schedule:run` mỗi phút để `forms:prune-changes` (mỗi giờ) dọn `form_changes`/`form_presence`. Không có cron thì nhật ký chỉ lớn dần, không sai chức năng.
+- **SMTP:** cần host, port, tài khoản, địa chỉ gửi để bật email mời/thông báo. Chưa có thì dùng link mời. Email gửi đồng bộ trong request; SMTP chậm thì chuyển sang queue.
+- **Chạy PHPUnit:** không chạy trên máy có DB thật mà thiếu bảo vệ – đã thêm `APP_CONFIG_CACHE` riêng cho test và kiểm tra SQLite trong `TestCase` (xem sự cố ở Giai đoạn 7).
+
+**Giới hạn đã biết của thiết kế**
+
+- **Lựa chọn gộp theo cả danh sách:** `options/rows/columns` là mảng chuỗi không id, hai người cùng sửa hai lựa chọn khác nhau của một câu thì người lưu sau thắng cả danh sách (lệch 4.7). Muốn gộp từng lựa chọn cần thêm id cho lựa chọn (đổi dữ liệu câu trả lời).
+- **Cùng sửa một ô văn bản:** ai lưu sau thắng cả ô, không gộp từng ký tự.
+- **Polling:** trễ 2–3 giây, mỗi người đang mở form gửi 1 request/2,5 giây. Nhiều người cùng lúc hoặc cần tức thời thì chuyển sang Reverb (`syncTransport` đã tách sẵn).
+- **Sửa form đã xuất bản** có hiệu lực ngay với người trả lời. Kiểu "bản nháp riêng, xuất bản lại mới áp dụng" là phạm vi riêng.
+- **[Hoàn tác] trên thanh cảnh báo phá dữ liệu** không khôi phục các thay đổi đi kèm đã được lưu ngay (vd. gỡ điều kiện trỏ tới câu bị xóa).
+- **`respondent_limit.field_keys`** không được kiểm tra khi câu hỏi bị xóa (như trước).
+
+**Quyền riêng tư / bảo mật**
+
+- **Tìm người dùng:** mọi người đăng nhập tìm được tên/email người khác (≥3 ký tự, 8 kết quả, throttle 60/phút). Muốn kín hơn: bắt buộc `form_id` hoặc chỉ khớp email đầy đủ.
+- **Tra cứu lời mời** `GET /invitations/{token}` có throttle 30/phút/IP; token 40+ ký tự, chỉ lưu bản băm. Có thể siết thêm nếu cần.
+
+**Chưa làm (để sau nếu cần)**
+
+- Tự làm mới số câu trả lời / danh sách câu trả lời khi đang mở trình sửa (không có revision cho câu trả lời).
+- Danh sách form chỉ trang đầu (15 form), chưa phân trang/cuộn thêm.
+- Hiện diện trên thẻ tiêu đề form (hiện chỉ theo câu đang chọn).
+- `title` gốc của trình duyệt còn ở ô màu `FormTheme`, `FormList`, `FormResponses`, trang công khai (ngoài phạm vi header/popup).
+- Popup xuất bản chưa tự đưa focus vào bên trong khi mở bằng bàn phím (Esc vẫn đóng và trả focus).
+
+**Môi trường local**
+
+- **Apache/WAMP thỉnh thoảng không nạp `.env`** khi có nhiều request song song → 500 ngẫu nhiên. Chữa: `php artisan config:cache` (chạy lại sau khi sửa `.env`). Test PHPUnit đã được tách khỏi cache này.
+- **Vite dev đôi khi trả CSS rỗng** sau nhiều lần sửa `index.css` liên tiếp (trang không có style). Chữa: lưu lại `index.css` (hoặc khởi động lại `npm run dev`).

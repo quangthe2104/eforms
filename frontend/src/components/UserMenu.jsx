@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { LogOut, Key, User } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import useDismiss from './editor/useDismiss'
+import Tooltip from './editor/Tooltip'
 
 export function UserAvatar({ user, size = 'w-9 h-9' }) {
   return user?.avatar ? (
@@ -29,23 +30,30 @@ export default function UserMenu({ className = '', hdr }) {
   const { user } = useAuthStore()
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
-  const close = useCallback(() => setOpen(false), [])
+  const buttonRef = useRef(null)
+  const close = useCallback((reason) => {
+    setOpen(false)
+    if (reason === 'escape') buttonRef.current?.focus()
+  }, [])
   useDismiss(ref, open, close)
   const actions = useAccountActions()
 
   return (
     <div className={`relative ${className}`} ref={ref}>
-      <button
-        type="button"
-        data-hdr={hdr}
-        aria-label={`Tài khoản: ${user?.name || ''}`}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        className="p-1 rounded-full hover:bg-gray-100 transition-colors"
-      >
-        <UserAvatar user={user} />
-      </button>
+      <Tooltip label={`Tài khoản: ${user?.name || ''}`}>
+        <button
+          ref={buttonRef}
+          type="button"
+          data-hdr={hdr}
+          aria-label={`Tài khoản: ${user?.name || ''}`}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+          className="p-1 rounded-full hover:bg-gray-100 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+        >
+          <UserAvatar user={user} />
+        </button>
+      </Tooltip>
 
       {open && (
         <div role="menu" className="absolute right-0 mt-2 w-72 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-[60]">

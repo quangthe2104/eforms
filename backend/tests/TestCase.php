@@ -9,6 +9,16 @@ use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 
 abstract class TestCase extends BaseTestCase
 {
+    /** RefreshDatabase wipes whatever database is configured, so refuse anything but in-memory SQLite. */
+    protected function setUpTraits()
+    {
+        if (config('database.default') !== 'sqlite' || config('database.connections.sqlite.database') !== ':memory:') {
+            throw new \RuntimeException('Tests must run on in-memory SQLite (is a config cache active? run `php artisan config:clear`).');
+        }
+
+        return parent::setUpTraits();
+    }
+
     protected function makeUser(): User
     {
         return User::create([

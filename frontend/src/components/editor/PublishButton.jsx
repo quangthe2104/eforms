@@ -6,7 +6,11 @@ import useDismiss from './useDismiss'
 export default function PublishButton({ status, busy, onChangeStatus, onCopyLink }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
-  const close = useCallback(() => setOpen(false), [])
+  const buttonRef = useRef(null)
+  const close = useCallback((reason) => {
+    setOpen(false)
+    if (reason === 'escape') buttonRef.current?.focus()
+  }, [])
   useDismiss(ref, open, close)
 
   if (status === 'draft' || !status) {
@@ -16,7 +20,7 @@ export default function PublishButton({ status, busy, onChangeStatus, onCopyLink
         data-hdr="publish"
         disabled={busy}
         onClick={() => onChangeStatus('published')}
-        className="px-3 md:px-5 py-2 rounded-md bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 disabled:opacity-60 whitespace-nowrap"
+        className="px-3 md:px-5 py-2 rounded-md bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 disabled:opacity-60 whitespace-nowrap focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
       >
         Xuất bản
       </button>
@@ -27,12 +31,13 @@ export default function PublishButton({ status, busy, onChangeStatus, onCopyLink
   return (
     <div className="relative" ref={ref}>
       <button
+        ref={buttonRef}
         type="button"
         data-hdr="publish"
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="px-3 md:px-4 py-2 rounded-md border border-gray-300 text-primary-700 text-sm font-medium hover:bg-primary-50 whitespace-nowrap"
+        className="px-3 md:px-4 py-2 rounded-md border border-gray-300 text-primary-700 text-sm font-medium hover:bg-primary-50 whitespace-nowrap focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
       >
         Đã xuất bản
       </button>
@@ -41,7 +46,7 @@ export default function PublishButton({ status, busy, onChangeStatus, onCopyLink
           role="dialog"
           aria-label="Tùy chọn xuất bản"
           data-publish-popover
-          className="absolute right-0 mt-2 w-72 bg-white rounded-lg shadow-xl border border-gray-200 p-4 z-[60] space-y-3"
+          className="absolute right-0 mt-2 w-72 max-w-[calc(100vw-1rem)] bg-white rounded-lg shadow-xl border border-gray-200 p-4 z-[60] space-y-3"
         >
           <div className="flex items-center justify-between gap-3">
             <span id="accept-responses-label" className="text-sm font-medium text-gray-900">Nhận câu trả lời</span>

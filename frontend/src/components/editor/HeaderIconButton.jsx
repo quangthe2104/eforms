@@ -13,7 +13,7 @@ const HeaderIconButton = forwardRef(function HeaderIconButton(
         type="button"
         aria-label={label}
         data-hdr={hdr}
-        className={`p-2 rounded-full text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent ${className}`}
+        className={`p-2 rounded-full text-gray-600 hover:bg-gray-100 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent ${className}`}
         {...rest}
       >
         <Icon className="w-5 h-5" />

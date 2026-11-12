@@ -7,6 +7,7 @@ import toast from 'react-hot-toast'
 import { useFormStore } from '../../store/formStore'
 import RichTextEditor from './RichTextEditor'
 import ConditionEditor from './ConditionEditor'
+import Tooltip from '../editor/Tooltip'
 import {
   GRID_TYPES, newVariantKey, blockEnd, cloneFields, insertAt, pruneReferences, removeFieldAt,
   referencesTo, variantsOf, shortLabel, DEFAULT_VARIANT_LABEL,
@@ -405,17 +406,23 @@ export default function RandomSectionCard({ field, index, isActive, onClick, the
         <div className="eforms-question-footer">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <button {...attributes} {...listeners} className="eforms-action-btn" title="Di chuyển cả phần">
-                <GripVertical className="w-5 h-5" />
-              </button>
-              <button onClick={(e) => { stop(e); duplicateField(index) }} className="eforms-action-btn" title="Nhân bản cả phần">
-                <Copy className="w-5 h-5" />
-              </button>
-              <button onClick={(e) => { stop(e); handleDelete() }} className="eforms-action-btn text-red-600 hover:bg-red-50" title="Xóa cả phần">
-                <Trash2 className="w-5 h-5" />
-              </button>
+              <Tooltip label="Di chuyển cả phần">
+                <button type="button" {...attributes} {...listeners} className="eforms-action-btn" aria-label="Di chuyển cả phần">
+                  <GripVertical className="w-5 h-5" />
+                </button>
+              </Tooltip>
+              <Tooltip label="Nhân bản cả phần">
+                <button type="button" onClick={(e) => { stop(e); duplicateField(index) }} className="eforms-action-btn" aria-label="Nhân bản cả phần">
+                  <Copy className="w-5 h-5" />
+                </button>
+              </Tooltip>
+              <Tooltip label="Xóa cả phần">
+                <button type="button" onClick={(e) => { stop(e); handleDelete() }} className="eforms-action-btn text-red-600 hover:bg-red-50" aria-label="Xóa cả phần">
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              </Tooltip>
             </div>
-            <p className="text-sm text-gray-500 italic">Mỗi phiên bản bắt đầu ở trang mới</p>
+            <p className="text-sm text-gray-500 italic text-right">Mỗi phiên bản bắt đầu ở trang mới</p>
           </div>
         </div>
       )}
@@ -458,7 +465,9 @@ function SortableVariant({ variant, number, canRemove, questionCount, onChange, 
         />
       </div>
       {canRemove && (
-        <button type="button" onClick={onRemove} className="eforms-option-remove mt-1" title="Xóa phiên bản">×</button>
+        <Tooltip label="Xóa phiên bản">
+          <button type="button" onClick={onRemove} className="eforms-option-remove mt-1" aria-label="Xóa phiên bản">×</button>
+        </Tooltip>
       )}
     </div>
   )

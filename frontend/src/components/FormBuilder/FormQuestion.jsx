@@ -7,6 +7,7 @@ import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-ki
 import { useFormStore } from '../../store/formStore'
 import RichTextEditor from './RichTextEditor'
 import AdvancedOptions, { advancedSummary } from './AdvancedOptions'
+import Tooltip from '../editor/Tooltip'
 import { updateChoiceReferences, removeFieldAt, referencesTo, sanitizeSettings, shortLabel } from '../../utils/formStructure'
 
 const FIELD_TYPE_LABELS = {
@@ -107,6 +108,14 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
     setEditData({ ...field })
   }, [field])
 
+  // Deselecting unmounts the inputs before they blur, so edit mode has to be reset here.
+  useEffect(() => {
+    if (isActive) return
+    setEditingQuestion(false)
+    setEditingOptionIndex(null)
+    setShowTypeDropdown(false)
+  }, [isActive])
+
   const syncReferences = (kind, oldValue, newValue) => {
     const { fields } = useFormStore.getState()
     const next = updateChoiceReferences(fields, field.key, kind, oldValue, newValue)
@@ -132,8 +141,14 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
       }
     }
 
+    const handleKey = (event) => event.key === 'Escape' && setShowTypeDropdown(false)
+
     document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleKey)
+    }
   }, [])
 
   const handleUpdate = (updates) => {
@@ -453,8 +468,13 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
             </div>
           )}
           
+          {isActive && (
           <div className="relative" ref={dropdownRef}>
             <button
+              type="button"
+              aria-haspopup="true"
+              aria-expanded={showTypeDropdown}
+              aria-label={`Loại câu hỏi: ${FIELD_TYPE_LABELS[editData.type] || editData.type}`}
               onClick={(e) => {
                 e.stopPropagation()
                 setShowTypeDropdown(!showTypeDropdown)
@@ -530,6 +550,7 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
             </div>
           )}
           </div>
+          )}
         </div>
       )}
 
@@ -1100,36 +1121,45 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
         <div className="eforms-question-footer">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <button
-                {...attributes}
-                {...listeners}
-                className="eforms-action-btn"
-                title="Di chuyển"
-              >
-                <GripVertical className="w-5 h-5" />
-              </button>
+              <Tooltip label="Di chuyển">
+                <button
+                  {...attributes}
+                  {...listeners}
+                  type="button"
+                  className="eforms-action-btn"
+                  aria-label="Di chuyển"
+                >
+                  <GripVertical className="w-5 h-5" />
+                </button>
+              </Tooltip>
               
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleDuplicate()
-                }}
-                className="eforms-action-btn"
-                title="Nhân bản"
-              >
-                <Copy className="w-5 h-5" />
-              </button>
+              <Tooltip label="Nhân bản">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleDuplicate()
+                  }}
+                  className="eforms-action-btn"
+                  aria-label="Nhân bản"
+                >
+                  <Copy className="w-5 h-5" />
+                </button>
+              </Tooltip>
               
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleDelete()
-                }}
-                className="eforms-action-btn text-red-600 hover:bg-red-50"
-                title="Xóa"
-              >
-                <Trash2 className="w-5 h-5" />
-              </button>
+              <Tooltip label="Xóa">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleDelete()
+                  }}
+                  className="eforms-action-btn text-red-600 hover:bg-red-50"
+                  aria-label="Xóa"
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              </Tooltip>
             </div>
 
             {!isSpecialType ? (

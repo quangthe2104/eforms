@@ -153,7 +153,7 @@ try {
   check('history empty after reload', await page.locator('[data-hdr=undo]').isDisabled())
   await activate('Ghi chú')
   let saveP = opsResponse(formA.id)
-  await card('Ghi chú').locator('button[title="Xóa"]').click()
+  await card('Ghi chú').locator('button[aria-label="Xóa"]').click()
   check('question deleted', (await card('Ghi chú').count()) === 0)
   check('undo tooltip names the step', (await tooltipOf(page.locator('[data-hdr=undo]'))) === "Hoàn tác: Xóa câu hỏi 'Ghi chú'")
   check('redo disabled', await page.locator('[data-hdr=redo]').isDisabled())

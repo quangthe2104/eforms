@@ -81,6 +81,13 @@ export default function FormEditorLayout() {
   const role = currentForm?.my_role || 'editor'
   const canEdit = role !== 'viewer'
 
+  // A live downgrade to viewer must not leave a question selected (with its editing controls) or the theme panel open.
+  useEffect(() => {
+    if (canEdit) return
+    setActiveKey(null)
+    setShowTheme(false)
+  }, [canEdit])
+
   const selectField = useCallback((key) => {
     const index = useFormStore.getState().fields.findIndex((f) => f.key === key)
     if (index < 0) return

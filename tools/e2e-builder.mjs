@@ -85,7 +85,7 @@ try {
   // 1. Random section after the email question, with filter and versions named after the grid rows.
   step = '1'
   await card('E email').click()
-  await page.locator('button[title="Thêm phần ngẫu nhiên"]').click()
+  await page.locator('button[aria-label="Thêm phần ngẫu nhiên"]').click()
   await header().waitFor()
   await header().getByText('Lọc phiên bản theo câu trước').click()
   await header().getByRole('button', { name: 'Đặt tên phiên bản theo các dòng' }).click()

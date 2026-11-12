@@ -2,6 +2,17 @@ import { Plus, Image, Video, SeparatorHorizontal, Palette, Shuffle } from 'lucid
 import { useFormStore } from '../../store/formStore'
 import { useEditor } from '../../layouts/FormEditorLayout'
 import { newKey, newVariantKey } from '../../utils/formStructure'
+import Tooltip from '../editor/Tooltip'
+
+function SidebarButton({ label, onClick, className = '', children }) {
+  return (
+    <Tooltip label={label}>
+      <button type="button" aria-label={label} onClick={onClick} className={`eforms-sidebar-btn ${className}`}>
+        {children}
+      </button>
+    </Tooltip>
+  )
+}
 
 export default function FormSidebar({ onInsert }) {
   const { fields } = useFormStore()
@@ -93,67 +104,39 @@ export default function FormSidebar({ onInsert }) {
   return (
     <div className="eforms-sidebar">
       <div className="eforms-sidebar-content">
-        <button 
-          onClick={handleAddQuestion}
-          className="eforms-sidebar-btn"
-          title="Thêm câu hỏi"
-        >
+        <SidebarButton label="Thêm câu hỏi" onClick={handleAddQuestion}>
           <Plus className="w-6 h-6" />
-        </button>
+        </SidebarButton>
 
         <div className="eforms-sidebar-divider"></div>
 
-        <button 
-          onClick={handleAddDescription}
-          className="eforms-sidebar-btn eforms-sidebar-text-btn"
-          title="Thêm tiêu đề và mô tả"
-        >
+        <SidebarButton label="Thêm tiêu đề và mô tả" onClick={handleAddDescription} className="eforms-sidebar-text-btn">
           <span className="text-lg font-bold">T</span>
-        </button>
+        </SidebarButton>
 
-        <button 
-          onClick={handleAddImage}
-          className="eforms-sidebar-btn"
-          title="Thêm ảnh"
-        >
+        <SidebarButton label="Thêm ảnh" onClick={handleAddImage}>
           <Image className="w-5 h-5" />
-        </button>
+        </SidebarButton>
 
-        <button 
-          onClick={handleAddVideo}
-          className="eforms-sidebar-btn"
-          title="Thêm video"
-        >
+        <SidebarButton label="Thêm video" onClick={handleAddVideo}>
           <Video className="w-5 h-5" />
-        </button>
+        </SidebarButton>
 
         <div className="eforms-sidebar-divider"></div>
 
-        <button 
-          onClick={handleAddSection}
-          className="eforms-sidebar-btn"
-          title="Thêm phần"
-        >
+        <SidebarButton label="Thêm phần" onClick={handleAddSection}>
           <SeparatorHorizontal className="w-5 h-5" />
-        </button>
+        </SidebarButton>
 
-        <button 
-          onClick={handleAddRandomSection}
-          className="eforms-sidebar-btn"
-          title="Thêm phần ngẫu nhiên"
-        >
+        <SidebarButton label="Thêm phần ngẫu nhiên" onClick={handleAddRandomSection}>
           <Shuffle className="w-5 h-5" />
-        </button>
+        </SidebarButton>
 
         <div className="eforms-sidebar-divider"></div>
 
-        <button 
-          onClick={handleThemeClick}
-          className="eforms-sidebar-btn"
-          title="Chỉnh sửa giao diện"
-        >
+        <SidebarButton label="Chỉnh sửa giao diện" onClick={handleThemeClick}>
           <Palette className="w-5 h-5" />
-        </button>
+        </SidebarButton>
       </div>
     </div>
   )

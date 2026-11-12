@@ -42,12 +42,17 @@ function HeaderTitle({ value, onChange, readOnly }) {
 function MoreMenu({ items }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
-  const close = useCallback(() => setOpen(false), [])
+  const buttonRef = useRef(null)
+  const close = useCallback((reason) => {
+    setOpen(false)
+    if (reason === 'escape') buttonRef.current?.focus()
+  }, [])
   useDismiss(ref, open, close)
 
   return (
     <div className="relative" ref={ref}>
       <HeaderIconButton
+        ref={buttonRef}
         hdr="more"
         icon={MoreVertical}
         label="Tùy chọn khác"
@@ -66,7 +71,7 @@ function MoreMenu({ items }) {
               role="menuitem"
               data-menu={item.key}
               onClick={() => { close(); item.onSelect() }}
-              className={`w-full items-center gap-3 px-4 py-2 text-sm transition-colors ${item.mobileOnly ? 'flex md:hidden' : 'flex'} ${item.danger ? 'text-red-600 hover:bg-red-50' : 'text-gray-700 hover:bg-gray-100'}`}
+              className={`w-full items-center gap-3 px-4 py-2 text-sm transition-colors focus:outline-none focus-visible:bg-gray-100 ${item.mobileOnly ? 'flex md:hidden' : 'flex'} ${item.danger ? 'text-red-600 hover:bg-red-50' : 'text-gray-700 hover:bg-gray-100'}`}
             >
               <item.icon className="w-4 h-4" />
               <span>{item.label}</span>
@@ -107,14 +112,14 @@ export default function EditorHeader({ editor }) {
     <header className="bg-white border-b border-gray-200 sticky top-0 z-50" data-editor-header>
       <div className="h-16 px-1 sm:px-4 flex items-center gap-0.5 sm:gap-1">
         <Tooltip label="Biểu mẫu">
-          <Link to="/forms" onClick={goHome} aria-label="Về danh sách biểu mẫu" data-hdr="logo" className="p-1.5 rounded-full hover:bg-gray-100 flex-shrink-0">
+          <Link to="/forms" onClick={goHome} aria-label="Về danh sách biểu mẫu" data-hdr="logo" className="p-1.5 rounded-full hover:bg-gray-100 flex-shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500">
             <FileText className="w-7 h-7 md:w-8 md:h-8 text-primary-600" />
           </Link>
         </Tooltip>
 
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <HeaderTitle value={title} onChange={setTitle} readOnly={!canEdit} />
-          <StatusBadge status={form?.status} className="hidden md:inline-flex" />
+          <StatusBadge status={form?.status} className="hidden lg:inline-flex" />
           {canEdit ? (
             <SaveIndicator state={saveState} onRetry={retrySave} />
           ) : (
@@ -151,7 +156,7 @@ export default function EditorHeader({ editor }) {
             key={tab.key}
             to={`/forms/${id}/${tab.path}`}
             data-tab={tab.key}
-            className={({ isActive }) => `flex items-center gap-1.5 px-2 sm:px-3 text-sm font-medium border-b-[3px] transition-colors ${
+            className={({ isActive }) => `flex items-center gap-1.5 px-2 sm:px-3 text-sm font-medium border-b-[3px] transition-colors focus:outline-none focus-visible:bg-gray-100 ${
               isActive ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-600 hover:text-gray-900'
             }`}
           >

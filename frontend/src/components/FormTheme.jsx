@@ -116,14 +116,20 @@ export default function FormTheme({ theme, onClose, onPreview }) {
       }
     }
 
+    const handleKey = (event) => {
+      if (event.key === 'Escape' && !event.defaultPrevented) handleClose()
+    }
+
     // Add event listener after a small delay to avoid closing immediately
     const timer = setTimeout(() => {
       document.addEventListener('mousedown', handleClickOutside)
     }, 100)
+    document.addEventListener('keydown', handleKey)
 
     return () => {
       clearTimeout(timer)
       document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleKey)
     }
   }, [])
 
@@ -273,7 +279,10 @@ export default function FormTheme({ theme, onClose, onPreview }) {
       {/* Sidebar */}
       <div 
         ref={sidebarRef} 
-        className={`fixed top-28 right-0 h-[calc(100vh-7rem)] w-80 bg-white border-l border-gray-200 shadow-2xl z-40 flex flex-col transform transition-transform duration-300 ease-in-out ${
+        data-theme-panel
+        role="dialog"
+        aria-label="Tùy chỉnh giao diện"
+        className={`fixed top-28 right-0 h-[calc(100vh-7rem)] w-80 max-w-full bg-white border-l border-gray-200 shadow-2xl z-40 flex flex-col transform transition-transform duration-300 ease-in-out ${
           isVisible && !isClosing ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
@@ -283,7 +292,7 @@ export default function FormTheme({ theme, onClose, onPreview }) {
             <h2 className="text-base font-bold text-gray-900">Giao Diện</h2>
             <p className="text-xs text-gray-500 mt-0.5">Thay đổi được lưu tự động</p>
           </div>
-          <button onClick={handleClose} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
+          <button type="button" aria-label="Đóng" data-theme-close onClick={handleClose} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -344,6 +353,7 @@ export default function FormTheme({ theme, onClose, onPreview }) {
                           </label>
                           <button 
                             onClick={() => setShowCustomColorPicker(false)}
+                            aria-label="Đóng bảng chọn màu"
                             className="p-0.5 hover:bg-gray-100 rounded"
                           >
                             <X className="w-3.5 h-3.5" />
@@ -455,6 +465,7 @@ export default function FormTheme({ theme, onClose, onPreview }) {
                     />
                     <button
                       onClick={handleRemoveImage}
+                      aria-label="Xóa ảnh tiêu đề"
                       className="absolute top-1 right-1 p-1 bg-white rounded shadow-lg hover:bg-gray-100"
                     >
                       <X className="w-3 h-3" />

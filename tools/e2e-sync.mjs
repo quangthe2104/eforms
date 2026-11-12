@@ -152,7 +152,7 @@ try {
 
   saved = opsResponse(pa)
   await activate(pa, 'Câu năm')
-  await pa.locator('.eforms-sidebar button[title="Thêm câu hỏi"]').click()
+  await pa.locator('.eforms-sidebar button[aria-label="Thêm câu hỏi"]').click()
   await saved
   t = await until(async () => (await labels(pb)).length === 6)
   timings.insert = t
@@ -161,7 +161,7 @@ try {
 
   saved = opsResponse(pa)
   await activate(pa, 'Câu năm')
-  await card(pa, 'Câu năm').locator('button[title="Xóa"]').click()
+  await card(pa, 'Câu năm').locator('button[aria-label="Xóa"]').click()
   await saved
   t = await until(async () => (await card(pb, 'Câu năm').count()) === 0)
   timings.delete = t

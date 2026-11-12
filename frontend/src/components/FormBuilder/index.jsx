@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Eye } from 'lucide-react'
 import { useFormStore } from '../../store/formStore'
 import { useEditor } from '../../layouts/FormEditorLayout'
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
@@ -47,6 +48,7 @@ export default function FormBuilder() {
   const { theme: currentTheme, showTheme, readOnly, activeQuestionIndex, setActiveQuestionIndex, presenceByField } = useEditor()
   const [activeTabs, setActiveTabs] = useState({})
   const hasResponses = (currentForm?.responses?.length || 0) > 0
+  const isActiveAt = (index) => !readOnly && activeQuestionIndex === index
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -170,9 +172,15 @@ export default function FormBuilder() {
           transition: 'max-width 0.3s ease',
         }}
       >
-        {/* Viewers get the questions read-only (full read-only polish: phase 7). */}
+        {/* `inert` keeps viewers from focusing or editing anything; CSS drops the hover affordances. */}
         <div className="eforms-main" {...(readOnly ? { inert: '', 'data-readonly': '' } : {})}>
           <div className="eforms-container">
+            {readOnly && (
+              <div data-readonly-note className="mb-4 flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600">
+                <Eye className="w-4 h-4 flex-shrink-0 text-gray-500" />
+                <span>Bạn đang xem biểu mẫu ở chế độ chỉ xem. Chỉ chủ sở hữu và người chỉnh sửa mới thay đổi được nội dung.</span>
+              </div>
+            )}
             {/* Header Image */}
             {currentTheme.header_image && (
               <div className="eforms-header-card bg-white rounded-lg shadow-sm overflow-hidden mb-6">
@@ -190,6 +198,7 @@ export default function FormBuilder() {
               description={description}
               onChange={handleTitleChange}
               theme={currentTheme}
+              readOnly={readOnly}
             />
 
             {/* Questions */}
@@ -212,7 +221,7 @@ export default function FormBuilder() {
                         <RandomSectionCard
                           field={field}
                           index={index}
-                          isActive={activeQuestionIndex === index}
+                          isActive={isActiveAt(index)}
                           onClick={() => setActiveQuestionIndex(index)}
                           theme={currentTheme}
                           activeVariant={currentVariant(field, activeTabs)}
@@ -225,7 +234,7 @@ export default function FormBuilder() {
                         <FormQuestion
                           field={field}
                           index={index}
-                          isActive={activeQuestionIndex === index}
+                          isActive={isActiveAt(index)}
                           onClick={() => setActiveQuestionIndex(index)}
                           theme={currentTheme}
                         />

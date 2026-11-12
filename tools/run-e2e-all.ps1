@@ -1,7 +1,11 @@
-# Runs the editor E2E suite one script at a time (the WAMP backend 500s under parallel load) and prints one line per script.
-# Usage: powershell -File tools/run-e2e-all.ps1 [script names without .mjs]
+# Runs every frontend unit script and E2E script one at a time (the WAMP backend 500s under parallel load) and prints one line per script.
+# Usage: powershell -File tools/run-e2e-all.ps1 [-Only name1,name2]   (names without .mjs)
 param([string[]]$Only)
-$scripts = @('test-ops', 'e2e-editor-header', 'e2e-autosave', 'e2e-sync', 'e2e-builder', 'e2e-phase4', 'e2e-share')
+$scripts = @(
+    'test-ops', 'test-form-runtime', 'test-form-structure',
+    'e2e-editor-header', 'e2e-autosave', 'e2e-sync', 'e2e-builder', 'e2e-phase4', 'e2e-share', 'e2e-polish',
+    'e2e-public', 'e2e-survey'
+)
 if ($Only) { $scripts = $Only -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ } }
 Set-Location $PSScriptRoot
 foreach ($s in $scripts) {

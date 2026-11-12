@@ -123,8 +123,15 @@ export default function FormSettingsTab() {
       <div className="bg-white rounded-xl shadow-sm border border-gray-200">
         <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between gap-3">
           <h2 className="text-xl font-bold text-gray-900">Cài đặt</h2>
-          {readOnly && <span className="text-sm text-gray-500">Bạn chỉ có quyền xem</span>}
+          {readOnly && (
+            <span className="px-2 py-0.5 rounded border border-gray-300 text-xs font-medium text-gray-600 whitespace-nowrap">Chỉ xem</span>
+          )}
         </div>
+        {readOnly && (
+          <p data-readonly-note className="px-6 pt-4 text-sm text-gray-600">
+            Bạn có quyền xem nên không thay đổi được cài đặt. Chủ sở hữu hoặc người chỉnh sửa có thể đổi vai trò của bạn trong mục Chia sẻ.
+          </p>
+        )}
 
         <fieldset disabled={readOnly} className="p-6 space-y-6 min-w-0">
           {/* Public Access */}
