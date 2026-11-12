@@ -7,6 +7,20 @@ export const useFormStore = create((set) => ({
   currentForm: null,
   fields: [],
   isDirty: false,
+  // Title/description are edited from both the header and the title card, so they live here.
+  title: '',
+  description: '',
+  metaDirty: false,
+
+  /** Fresh load of a form into the editor: drops every local change. */
+  loadForm: (form) => set({
+    currentForm: form,
+    fields: normalizeFields(form?.fields),
+    isDirty: false,
+    title: form?.title || '',
+    description: form?.description || '',
+    metaDirty: false,
+  }),
 
   setCurrentForm: (form) => set((state) => {
     // Only update fields if not dirty (no unsaved changes)
@@ -25,6 +39,15 @@ export const useFormStore = create((set) => ({
       }
     }
   }),
+
+  /** Merges server-side form attributes (status, settings…) without touching the edited fields. */
+  patchForm: (patch) => set((state) => ({ currentForm: state.currentForm ? { ...state.currentForm, ...patch } : state.currentForm })),
+
+  setMeta: (patch) => set({ ...patch, metaDirty: true }),
+
+  markMetaSaved: (sent) => set((state) => ({
+    metaDirty: state.title !== sent.title || state.description !== sent.description,
+  })),
 
   /** After a save: adopt the server ids of saved fields; stay dirty if edits happened meanwhile. */
   applySavedFields: (form, savedFields, sentFields) => set((state) => {
@@ -76,6 +99,9 @@ export const useFormStore = create((set) => ({
     currentForm: null,
     fields: [],
     isDirty: false,
+    title: '',
+    description: '',
+    metaDirty: false,
   }),
   
   markAsSaved: () => set({ isDirty: false }),

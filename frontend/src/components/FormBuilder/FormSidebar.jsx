@@ -1,12 +1,11 @@
 import { Plus, Image, Video, SeparatorHorizontal, Palette, Shuffle } from 'lucide-react'
 import { useFormStore } from '../../store/formStore'
-import { useFormBuilder } from '../../contexts/FormBuilderContext'
-import toast from 'react-hot-toast'
+import { useEditor } from '../../layouts/FormEditorLayout'
 import { newKey, newVariantKey } from '../../utils/formStructure'
 
 export default function FormSidebar({ onInsert }) {
   const { fields } = useFormStore()
-  const { formBuilderActions } = useFormBuilder()
+  const { openTheme } = useEditor()
 
   const handleAddQuestion = () => {
     // Mặc định thêm field Trắc nghiệm (radio)
@@ -89,13 +88,7 @@ export default function FormSidebar({ onInsert }) {
     ], { isBlock: true })
   }
 
-  const handleThemeClick = () => {
-    if (formBuilderActions?.currentForm?.id) {
-      formBuilderActions.setShowTheme(true)
-    } else {
-      toast('Vui lòng lưu biểu mẫu trước khi chỉnh sửa giao diện')
-    }
-  }
+  const handleThemeClick = () => openTheme()
 
   return (
     <div className="eforms-sidebar">

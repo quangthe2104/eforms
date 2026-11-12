@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { formAPI, responseAPI, exportAPI } from '../../services/api'
+import { useNavigate } from 'react-router-dom'
+import { responseAPI, exportAPI } from '../../services/api'
+import { useFormStore } from '../../store/formStore'
+import { useEditor } from '../../layouts/FormEditorLayout'
 import { normalizeFields } from '../../utils/formStructure'
 import { assignmentSummary } from '../../utils/responseView'
 import toast from 'react-hot-toast'
-import { ArrowLeft, Download, Trash2, Eye, Calendar, FileSpreadsheet } from 'lucide-react'
+import { Trash2, Eye, Calendar, FileSpreadsheet } from 'lucide-react'
 import { format } from 'date-fns'
 import FormSummary from '../../components/FormSummary'
 
+/** "Câu trả lời" tab; the form itself comes from FormEditorLayout. */
 export default function FormResponses() {
-  const { id } = useParams()
+  const { id, form, readOnly } = useEditor()
   const navigate = useNavigate()
-  const [form, setForm] = useState(null)
   const [responses, setResponses] = useState([])
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
@@ -23,15 +25,10 @@ export default function FormResponses() {
 
   const fetchData = async () => {
     try {
-      const [formRes, responsesRes] = await Promise.all([
-        formAPI.getOne(id),
-        responseAPI.getAll(id)
-      ])
-      setForm(formRes.data)
+      const responsesRes = await responseAPI.getAll(id)
       setResponses(responsesRes.data.data || responsesRes.data)
     } catch (error) {
       toast.error('Không thể tải phản hồi')
-      navigate('/forms')
     } finally {
       setLoading(false)
     }
@@ -62,6 +59,8 @@ export default function FormResponses() {
     try {
       await responseAPI.delete(id, responseId)
       setResponses(responses.filter(r => r.id !== responseId))
+      const latest = useFormStore.getState().currentForm
+      useFormStore.getState().patchForm({ responses: (latest?.responses || []).filter((r) => r.id !== responseId) })
       toast.success('Đã xóa phản hồi')
     } catch (error) {
       toast.error('Không thể xóa phản hồi')
@@ -83,19 +82,7 @@ export default function FormResponses() {
     <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center space-x-4">
-          <button
-            onClick={() => navigate(-1)}
-            className="p-2 hover:bg-gray-100 rounded-lg"
-            title="Quay lại"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">{form?.title}</h1>
-            <p className="text-sm text-gray-600">Tổng số câu trả lời: {responses.length}</p>
-          </div>
-        </div>
+        <h1 className="text-2xl font-bold text-gray-900">{responses.length} câu trả lời</h1>
 
         <button
           onClick={handleExport}
@@ -222,13 +209,15 @@ export default function FormResponses() {
                           >
                             <Eye className="w-5 h-5" />
                           </button>
-                          <button
-                            onClick={() => handleDelete(response.id)}
-                            className="text-red-600 hover:text-red-900"
-                            title="Xóa"
-                          >
-                            <Trash2 className="w-5 h-5" />
-                          </button>
+                          {!readOnly && (
+                            <button
+                              onClick={() => handleDelete(response.id)}
+                              className="text-red-600 hover:text-red-900"
+                              title="Xóa"
+                            >
+                              <Trash2 className="w-5 h-5" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

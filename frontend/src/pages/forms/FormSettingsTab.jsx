@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { X, Plus } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { useFormStore } from '../store/formStore'
-import { newKey, shortLabel } from '../utils/formStructure'
+import { useFormStore } from '../../store/formStore'
+import { useEditor } from '../../layouts/FormEditorLayout'
+import { newKey, shortLabel } from '../../utils/formStructure'
 
 const LIMIT_METHODS = [
   { value: 'device', label: 'Mã thiết bị ẩn danh', hint: 'Lưu trong trình duyệt; người cố tình vẫn lách được bằng tab ẩn danh hoặc trình duyệt khác.' },
@@ -26,7 +27,10 @@ const DEFAULT_LIMIT = {
   message: 'Bạn đã trả lời biểu mẫu này. Xin cảm ơn!',
 }
 
-export default function FormSettings({ form, onClose, onSave }) {
+/** "Cài đặt" tab. Explicit save for now; phase 4 saves toggles at once and text/number fields after 1.5 s. */
+export default function FormSettingsTab() {
+  const { form, saveSettings, readOnly } = useEditor()
+  const [saving, setSaving] = useState(false)
   const fields = useFormStore((s) => s.fields)
   const insertFields = useFormStore((s) => s.insertFields)
   const [limit, setLimit] = useState(() => {
@@ -82,7 +86,7 @@ export default function FormSettings({ form, onClose, onSave }) {
     return null
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const error = limitError()
     if (error) {
       toast.error(error)
@@ -91,7 +95,8 @@ export default function FormSettings({ form, onClose, onSave }) {
     const fieldKeys = Object.fromEntries(
       Object.entries(limit.field_keys || {}).map(([m, k]) => [m, methods.includes(m) ? k : null])
     )
-    onSave({
+    setSaving(true)
+    await saveSettings({
       ...settings,
       require_login: settings.require_login || usesAccount,
       respondent_limit: {
@@ -100,19 +105,18 @@ export default function FormSettings({ form, onClose, onSave }) {
         max_per_person: Math.max(1, parseInt(limit.max_per_person, 10) || 1),
       },
     })
+    setSaving(false)
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-          <h2 className="text-xl font-bold text-gray-900">Cài Đặt Biểu Mẫu</h2>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
-            <X className="w-5 h-5" />
-          </button>
+    <div className="max-w-3xl mx-auto" data-settings-tab>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+        <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between gap-3">
+          <h2 className="text-xl font-bold text-gray-900">Cài đặt</h2>
+          {readOnly && <span className="text-sm text-gray-500">Bạn chỉ có quyền xem</span>}
         </div>
 
-        <div className="p-6 space-y-6">
+        <fieldset disabled={readOnly} className="p-6 space-y-6 min-w-0">
           {/* Public Access */}
           <div>
             <label className="flex items-center space-x-3 cursor-pointer">
@@ -370,16 +374,15 @@ export default function FormSettings({ form, onClose, onSave }) {
               placeholder="Cảm ơn bạn đã gửi phản hồi!"
             />
           </div>
-        </div>
+        </fieldset>
 
-        <div className="border-t border-gray-200 px-6 py-4 flex justify-end space-x-3">
-          <button onClick={onClose} className="btn btn-secondary">
-            Hủy
-          </button>
-          <button onClick={handleSave} className="btn btn-primary">
-            Lưu Cài Đặt
-          </button>
-        </div>
+        {!readOnly && (
+          <div className="border-t border-gray-200 px-6 py-4 flex justify-end">
+            <button onClick={handleSave} disabled={saving} className="btn btn-primary disabled:opacity-60">
+              {saving ? 'Đang lưu…' : 'Lưu Cài Đặt'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -120,6 +120,11 @@ export const formAPI = {
   getStatistics: (id) => api.get(`/forms/${id}/statistics`),
 }
 
+// Collaborator APIs
+export const collaboratorAPI = {
+  list: (formId) => api.get(`/forms/${formId}/collaborators`),
+}
+
 // Form Field APIs
 export const fieldAPI = {
   create: (formId, data) => api.post(`/forms/${formId}/fields`, data),

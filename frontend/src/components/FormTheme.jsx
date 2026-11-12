@@ -263,7 +263,7 @@ export default function FormTheme({ theme, onClose, onPreview }) {
       {/* Sidebar */}
       <div 
         ref={sidebarRef} 
-        className={`fixed top-16 right-0 h-[calc(100vh-4rem)] w-80 bg-white border-l border-gray-200 shadow-2xl z-40 flex flex-col transform transition-transform duration-300 ease-in-out ${
+        className={`fixed top-28 right-0 h-[calc(100vh-7rem)] w-80 bg-white border-l border-gray-200 shadow-2xl z-40 flex flex-col transform transition-transform duration-300 ease-in-out ${
           isVisible && !isClosing ? 'translate-x-0' : 'translate-x-full'
         }`}
       >

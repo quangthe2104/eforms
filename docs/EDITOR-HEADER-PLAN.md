@@ -12,7 +12,7 @@ File này là nguồn duy nhất về phạm vi, quyết định và tiến đ�
 | 0 | Thảo luận, chốt thiết kế | Đã chốt (12/11/2026) |
 | 1 | Backend: vai trò cộng tác viên, kiểm tra quyền tập trung, lời mời, tìm người dùng | Xong (12/11/2026) |
 | 2 | Backend: lưu theo thao tác, số phiên bản, nhật ký thay đổi, hiện diện | Xong (12/11/2026) |
-| 3 | Frontend: layout trang sửa mới (header + 3 tab), bỏ phần header form khỏi `MainLayout` | Chưa làm |
+| 3 | Frontend: layout trang sửa mới (header + 3 tab), bỏ phần header form khỏi `MainLayout` | Xong (12/11/2026) |
 | 4 | Frontend: lưu tự động, chỉ báo lưu, cảnh báo thay đổi phá dữ liệu, hoàn tác/làm lại | Chưa làm |
 | 5 | Frontend: đồng bộ trực tiếp (polling) + hiện diện | Chưa làm |
 | 6 | Frontend: popup Chia sẻ, trang nhận lời mời, đăng ký theo lời mời, danh sách form được chia sẻ | Chưa làm |
@@ -324,6 +324,28 @@ Quy tắc:
 - `pages/forms/FormSettingsTab.jsx` (tách nội dung từ `FormSettings.jsx`), `pages/Invite.jsx`. `Register.jsx`/`Login.jsx` nhận `?invite=`.
 - `App.jsx`: route lồng `/forms/:id` → `edit | responses | responses/:responseId | settings`, thêm `/invite/:token`.
 
+**Đã làm ở Giai đoạn 3 – cấu trúc thực tế và điểm nối cho giai đoạn sau:**
+
+- `layouts/FormEditorLayout.jsx`: route `/forms/:id` (index → `edit`). Tải form **một lần** (`GET /forms/{id}`) vào `useFormStore.loadForm`, render `EditorHeader` + `<Outlet context={editor}/>`. Các tab lấy trạng thái bằng `useEditor()` (= `useOutletContext`): `form, role, canEdit, readOnly, isOwner, theme, showTheme/openTheme, save, saveSettings, saving, savedAt, dirty, changeStatus, statusBusy, copyLink, openPreview, openShare, duplicate, remove, presence, activeQuestionIndex/setActiveQuestionIndex, responseCount`. `FormResponses`/`ResponseDetail` dùng `form` từ layout (không gọi lại `GET /forms/{id}`); chỉ còn tải danh sách/chi tiết câu trả lời.
+- `store/formStore.js`: thêm `title`, `description`, `metaDirty`, `loadForm`, `setMeta`, `markMetaSaved`, `patchForm` (gộp thuộc tính form như `status`, cài đặt mà không đụng câu hỏi). Tiêu đề header và thẻ tiêu đề cùng đọc/ghi `title` trong store (đồng bộ hai chiều).
+- **Lưu tạm thời (Giai đoạn 4 thay):** `save()` trong layout = logic Lưu cũ chuyển từ `FormBuilder` (PUT form + `bulk-update` nếu `isDirty`, `confirm()` phá dữ liệu, theme `previewTheme_{id}` trong `localStorage`, chụp ảnh thu nhỏ sau mỗi lần lưu). Gọi từ nút icon **Lưu** (`data-hdr="save"`, ngay sau Làm lại) và Ctrl+S. `saveSettings()` lưu câu hỏi đang sửa trước (như cũ). Xuất bản bản nháp đang có thay đổi chưa lưu thì lưu trước rồi mới đổi trạng thái. Giai đoạn 4: thay `save`/`saveSettings` bằng `services/autosave.js`, bỏ nút Lưu + Ctrl+S, nối `SaveIndicator` (props `saving/dirty/savedAt`, thêm trạng thái tạm dừng/lỗi), bật `Undo/Redo` (đang `disabled`, `data-hdr="undo|redo"`), thêm `DestructiveBanner` dưới header trong layout.
+- `components/editor/`: `EditorHeader` (hàng 1 + hàng tab), `HeaderIconButton` + `Tooltip` (portal, tối màu, hiện khi hover/focus bằng bàn phím, Esc để ẩn; header không còn `title`), `StatusBadge`, `SaveIndicator`, `PublishButton` (popover: công tắc Nhận câu trả lời `published↔closed`, Sao chép liên kết, Hủy xuất bản), `PresenceAvatars` (nhận `users=[{user_id,name}]`, hiện chưa có dữ liệu – Giai đoạn 5 truyền `editor.presence`; `presenceColor(userId)` dùng lại cho viền câu hỏi), `ShareDialog` (**bản tạm, chỉ đọc**: danh sách người có quyền từ `GET /collaborators` + nút sao chép link + Xong – Giai đoạn 6 viết đầy đủ, mở qua `editor.openShare`), `useDismiss`. `components/UserMenu.jsx` dùng chung cho `MainLayout` và header (trên mobile các mục tài khoản nằm trong ⋮).
+- Mọi phần tử header có `data-hdr` (logo, title, status, save-indicator, presence, theme, preview, undo, redo, save, copy-link, share, publish, more, user; người xem có `readonly`), tab có `data-tab` – dùng cho E2E.
+- Vai trò: Người xem ẩn Hoàn tác/Làm lại/Lưu/Giao diện/Xuất bản, tiêu đề là chữ thường, nhãn "Chỉ xem"; tab Câu hỏi đặt `inert` lên `.eforms-main` và ẩn thanh công cụ bên (chỉ đọc mức rẻ – chỉnh tiếp ở Giai đoạn 7); tab Cài đặt dùng `<fieldset disabled>` và ẩn nút lưu; tab Câu trả lời ẩn nút xóa. ⋮: Nhân bản (mọi vai trò), Xóa (chỉ Chủ sở hữu). "Hủy xuất bản" đã bỏ khỏi ⋮.
+- Mobile (< 768px): hiện logo, tiêu đề, chỉ báo lưu (chỉ icon), Hoàn tác/Làm lại, Lưu, nút xuất bản, ⋮. Ẩn nhãn trạng thái; Giao diện, Xem trước, Sao chép liên kết, Thêm cộng tác viên và các mục tài khoản dồn vào ⋮.
+- `/forms/create` → `pages/forms/CreateForm.jsx`: tạo bản nháp "Biểu mẫu không có tiêu đề" rồi `replace` sang `/forms/:id/edit` (có chặn chạy 2 lần do StrictMode).
+- Cài đặt: `components/FormSettings.jsx` → `pages/forms/FormSettingsTab.jsx` (trang, vẫn có nút "Lưu Cài Đặt" cho tới Giai đoạn 4).
+- Đã xóa: `contexts/FormBuilderContext.jsx`, `pages/forms/FormBuilder.jsx` (bản cũ), `components/FormPreview.jsx` (modal không còn ai dùng). `MainLayout` chỉ còn logo + tìm kiếm + `UserMenu`.
+- Lệch/ghi chú:
+  - Toast chuyển từ góc trên-phải xuống **giữa-dưới** (cách đáy 72px để không che thanh công cụ mobile) vì toast che các nút bên phải header.
+  - Lưu form không gửi các cột giao diện đang `null` (form chưa từng chọn theme) – quy tắc Giai đoạn 2 trả 422 cho `null`, khiến nút Lưu cũ cũng lỗi với các form này.
+  - Bảng màu ở header khi đang ở tab khác thì chuyển về tab Câu hỏi rồi mở panel. Panel `FormTheme` nằm dưới cả 2 hàng header (`top-28`); thanh công cụ bên dính ở `top-[128px]`.
+  - Mở panel giao diện không còn bị tính là thay đổi (chỉ coi là thay đổi khi khác theme đã lưu).
+  - Xem trước khi còn thay đổi chưa lưu: mở tab xem trước (nội dung đã lưu) + toast nhắc; Giai đoạn 4 gửi hàng đợi trước khi mở.
+  - Sao chép liên kết khi form chưa xuất bản: toast "Biểu mẫu chưa được xuất bản" + nút "Xuất bản" (Người xem không có nút).
+  - Ô "Chấp Nhận Phản Hồi" (`accept_responses`) trong tab Cài đặt vẫn còn, độc lập với công tắc "Nhận câu trả lời" (`status`). Nên bỏ/gộp ở Giai đoạn 6–7.
+- Kiểm thử: `tools/e2e-editor-header.mjs` (54 kiểm tra: thứ tự nút, aria-label, tooltip hover/focus, 3 tab không gọi lại `GET /forms/{id}`, đồng bộ tiêu đề, popover xuất bản, Người xem/Người chỉnh sửa, mobile 390px, `/forms/create`). Người xem tạo bằng `tools/ensure-user.php` (`e2e-viewer@eforms.test`). `e2e-builder.mjs` chỉ đổi selector (tab Cài đặt, `[data-hdr=save]`).
+
 ---
 
 ## 6. Thứ tự làm và kiểm thử
@@ -356,3 +378,4 @@ Quy tắc:
 - **Lịch chạy:** cần cron `php artisan schedule:run` mỗi phút trên server để `forms:prune-changes` (mỗi giờ) chạy. Không có cron thì nhật ký chỉ lớn dần, không sai chức năng.
 - **MySQL mặc định MyISAM** trên WAMP local: các migration sau này nên khai báo `$table->engine('InnoDB')` (hoặc đặt engine mặc định của server là InnoDB). Production cần kiểm tra `@@default_storage_engine`. Local đã chạy migration Giai đoạn 2 ngày 12/11/2026, bản sao lưu `backend/storage/app/backup-before-phase2.sql`.
 - **`respondent_limit.field_keys`** không được kiểm tra khi câu hỏi bị xóa (giống trước đây).
+- **Apache/WAMP local thỉnh thoảng không nạp `.env`** khi có nhiều request song song (log: `production.ERROR: No application encryption key`, kết nối `sqlite`) → 500 ngẫu nhiên, làm E2E lỗi chập chờn (gặp 1 lần ở `e2e-phase4` ngày 12/11/2026, chạy lại thì qua). Cách chữa thường dùng: `php artisan config:cache` (nhớ chạy lại sau khi sửa `.env`). Polling ở Giai đoạn 5 sẽ làm lỗi này hay gặp hơn.

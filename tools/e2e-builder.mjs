@@ -49,7 +49,7 @@ page.on('dialog', (d) => d.accept())
 
 const card = (label) => page.locator('.eforms-question', { hasText: label }).first()
 const header = () => page.locator('.eforms-random-header').first()
-const saveBtn = () => page.locator('button:visible', { has: page.locator('span', { hasText: /^Lưu$/ }) }).first()
+const saveBtn = () => page.locator('[data-hdr=save]')
 const save = async () => {
   const wait = page.waitForResponse((r) => r.url().includes('/fields/bulk-update'), { timeout: 15000 })
   await saveBtn().click()
@@ -112,7 +112,7 @@ try {
 
   // 4. Respondent limit by email (settings saves pending fields first).
   step = '4'
-  await page.locator('button[title="Cài đặt"]').click()
+  await page.locator('[data-tab=settings]').click()
   await page.getByText('Giới Hạn Mỗi Người Trả Lời').click()
   await page.locator('label', { hasText: 'Lấy từ một câu Email' }).locator('input').check()
   const fieldsSave = page.waitForResponse((r) => r.url().includes('/fields/bulk-update'))
@@ -146,6 +146,7 @@ try {
   // 5. Rename option A -> A1, save again: ids must survive and the condition must follow the rename.
   step = '5'
   const idsBefore = saved.map((f) => f.id).join(',')
+  await page.locator('[data-tab=edit]').click()
   await q.click()
   await q.locator('.eforms-option-input', { hasText: /^A$/ }).click()
   await page.keyboard.type('A1')

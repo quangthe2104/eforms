@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { formAPI, responseAPI } from '../../services/api'
+import { responseAPI } from '../../services/api'
+import { useEditor } from '../../layouts/FormEditorLayout'
 import toast from 'react-hot-toast'
 import { ArrowLeft, Calendar, User, Globe, Shuffle, Fingerprint } from 'lucide-react'
 import { format } from 'date-fns'
@@ -38,9 +39,9 @@ const Chip = ({ children }) => (
 )
 
 export default function ResponseDetail() {
-  const { id, responseId } = useParams()
+  const { responseId } = useParams()
+  const { id, form } = useEditor()
   const navigate = useNavigate()
-  const [form, setForm] = useState(null)
   const [response, setResponse] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -50,8 +51,7 @@ export default function ResponseDetail() {
 
   const fetchData = async () => {
     try {
-      const [formRes, responseRes] = await Promise.all([formAPI.getOne(id), responseAPI.getOne(id, responseId)])
-      setForm(formRes.data)
+      const responseRes = await responseAPI.getOne(id, responseId)
       setResponse(responseRes.data)
     } catch (error) {
       toast.error('Không thể tải chi tiết phản hồi')
@@ -89,7 +89,7 @@ export default function ResponseDetail() {
     <div>
       {/* Header */}
       <div className="flex items-center space-x-4 mb-6">
-        <button onClick={() => navigate(`/forms/${id}/responses`)} className="p-2 hover:bg-gray-100 rounded-lg">
+        <button onClick={() => navigate(`/forms/${id}/responses`)} aria-label="Quay lại danh sách câu trả lời" className="p-2 hover:bg-gray-100 rounded-lg">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div>

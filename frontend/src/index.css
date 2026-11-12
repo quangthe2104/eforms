@@ -407,7 +407,7 @@
 
 /* Sidebar */
 .eforms-sidebar {
-  @apply flex-shrink-0 sticky top-[80px] self-start;
+  @apply flex-shrink-0 sticky top-[128px] self-start;
 }
 
 .eforms-sidebar-content {
