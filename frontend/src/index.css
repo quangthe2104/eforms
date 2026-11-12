@@ -162,6 +162,71 @@
   width: 100%;
 }
 
+/* Respondent answer line (short/long text, email, number, "other" option…) */
+.eforms-answer {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+@media (min-width: 640px) {
+  .eforms-answer--short {
+    max-width: 50%;
+  }
+}
+
+.eforms-answer-input {
+  display: block;
+  width: 100%;
+  padding: 6px 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #111827;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #d1d5db;
+  border-radius: 0;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  transition: border-color 0.2s ease-in-out;
+}
+
+.eforms-answer-input::placeholder {
+  color: #6b7280;
+}
+
+.eforms-answer-input:hover:not(:disabled) {
+  border-bottom-color: #9ca3af;
+}
+
+.eforms-answer-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.eforms-answer::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 0;
+  height: 2px;
+  background-color: var(--theme-primary, #3b82f6);
+  transition: width 0.3s ease-in-out, left 0.3s ease-in-out;
+  pointer-events: none;
+}
+
+.eforms-answer:focus-within::after,
+.eforms-answer[data-invalid]::after {
+  left: 0;
+  width: 100%;
+}
+
+.eforms-answer[data-invalid]::after {
+  background-color: #dc2626;
+}
+
 .eforms-title-input {
   @apply w-full text-3xl font-bold text-gray-900 outline-none bg-transparent py-1;
   border: none;

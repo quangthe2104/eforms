@@ -4,7 +4,8 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    host: 'eforms.test',
+    host: true,
     port: 5173,
+    allowedHosts: ['eforms.test', 'localhost'],
   }
 })

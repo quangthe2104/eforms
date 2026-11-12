@@ -21,17 +21,33 @@ export function choiceHint(field) {
   return null
 }
 
+/** Google Forms style answer line: thin underline, theme-coloured line grows from the centre on focus. */
+function AnswerLine({ short = false, invalid = false, className = '', children }) {
+  return (
+    <span className={`eforms-answer ${short ? 'eforms-answer--short' : ''} ${className}`} data-invalid={invalid || undefined}>
+      {children}
+    </span>
+  )
+}
+
+const autoGrow = (el) => {
+  el.style.height = 'auto'
+  el.style.height = `${el.scrollHeight}px`
+}
+
 function OtherInput({ value, onChange, disabled, invalid }) {
   return (
-    <input
-      type="text"
-      value={value ?? ''}
-      disabled={disabled}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder="Xin ghi rõ"
-      className={`input mt-2 ${invalid ? 'border-red-400' : ''}`}
-      aria-label="Nội dung phương án khác"
-    />
+    <AnswerLine invalid={invalid} className="mt-2">
+      <input
+        type="text"
+        value={value ?? ''}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Xin ghi rõ"
+        className="eforms-answer-input"
+        aria-label="Nội dung phương án khác"
+      />
+    </AnswerLine>
   )
 }
 
@@ -41,14 +57,16 @@ function OtherInput({ value, onChange, disabled, invalid }) {
  */
 export default function QuestionInput({ field, name, value, onChange, error, piped }) {
   const text = (type, extra = {}) => (
-    <input
-      type={type}
-      value={value ?? ''}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={field.placeholder || ''}
-      className="input"
-      {...extra}
-    />
+    <AnswerLine short invalid={!!error}>
+      <input
+        type={type}
+        value={value ?? ''}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={field.placeholder || ''}
+        className="eforms-answer-input"
+        {...extra}
+      />
+    </AnswerLine>
   )
 
   switch (field.type) {
@@ -56,13 +74,19 @@ export default function QuestionInput({ field, name, value, onChange, error, pip
       return text('text', { placeholder: field.placeholder || 'Câu trả lời của bạn' })
     case 'long_text':
       return (
-        <textarea
-          value={value ?? ''}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={field.placeholder || 'Câu trả lời của bạn'}
-          className="input"
-          rows="4"
-        />
+        <AnswerLine invalid={!!error}>
+          <textarea
+            ref={(el) => el && autoGrow(el)}
+            value={value ?? ''}
+            onChange={(e) => {
+              autoGrow(e.target)
+              onChange(e.target.value)
+            }}
+            placeholder={field.placeholder || 'Câu trả lời của bạn'}
+            className="eforms-answer-input"
+            rows="1"
+          />
+        </AnswerLine>
       )
     case 'email':
       return text('email', { autoComplete: 'email' })
@@ -83,7 +107,6 @@ export default function QuestionInput({ field, name, value, onChange, error, pip
         inputMode: digits ? 'numeric' : 'decimal',
         maxLength: digits ? digits + 1 : undefined,
         placeholder: field.placeholder || (n.min != null && n.max != null && n.min !== '' && n.max !== '' ? `${n.min} – ${n.max}` : ''),
-        className: 'input max-w-xs',
       })
     }
 
