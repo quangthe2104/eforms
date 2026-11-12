@@ -7,15 +7,44 @@ import EditableTitle from './EditableTitle'
 import FormQuestion from './FormQuestion'
 import FormSidebar from './FormSidebar'
 import RandomSectionCard, { BlockFooter } from './RandomSectionCard'
+import { presenceColor } from '../editor/PresenceAvatars'
 import {
   moveField, insertionPoint, isHiddenInBuilder, currentVariant, isDifferentMode, findHeader,
   blockEnd,
 } from '../../utils/formStructure'
 
+/** Border + name label in the color of the other people who have this question selected. */
+function PresenceFrame({ users, children }) {
+  const first = users?.[0]
+  const color = first ? presenceColor(first.user_id) : null
+  return (
+    <div className="relative" data-presence={users?.length ? users.map((u) => u.user_id).join(',') : undefined}>
+      {children}
+      {first && (
+        <>
+          <div className="pointer-events-none absolute -inset-px rounded-lg border-2 z-[1]" style={{ borderColor: color }} />
+          <div className="pointer-events-none absolute -top-2.5 right-3 z-[2] flex gap-1">
+            {users.map((u) => (
+              <span
+                key={u.user_id}
+                data-presence-label
+                className="max-w-[10rem] truncate rounded px-1.5 py-px text-[11px] font-medium leading-4 text-white shadow-sm"
+                style={{ backgroundColor: presenceColor(u.user_id) }}
+              >
+                {u.name}
+              </span>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 /** "Câu hỏi" tab. Form data, saving and the theme live in FormEditorLayout. */
 export default function FormBuilder() {
   const { currentForm, fields, reorderFields, insertFields, title, description, setMeta } = useFormStore()
-  const { theme: currentTheme, showTheme, readOnly, activeQuestionIndex, setActiveQuestionIndex } = useEditor()
+  const { theme: currentTheme, showTheme, readOnly, activeQuestionIndex, setActiveQuestionIndex, presenceByField } = useEditor()
   const [activeTabs, setActiveTabs] = useState({})
   const hasResponses = (currentForm?.responses?.length || 0) > 0
 
@@ -213,7 +242,7 @@ export default function FormBuilder() {
 
                     return (
                       <div key={field.key} data-field-key={field.key} className={hidden && !closesBlock ? 'hidden' : undefined}>
-                        {card}
+                        {card && <PresenceFrame users={presenceByField?.[field.key]}>{card}</PresenceFrame>}
                         {closesBlock && (
                           <div className={card ? 'mt-3' : undefined}>
                             <BlockFooter

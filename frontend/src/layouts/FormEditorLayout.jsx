@@ -3,7 +3,9 @@ import { Outlet, useLocation, useNavigate, useOutletContext, useParams } from 'r
 import toast from 'react-hot-toast'
 import { formAPI } from '../services/api'
 import { createAutosave } from '../services/autosave'
+import { createLiveSync } from '../services/liveSync'
 import { useFormStore } from '../store/formStore'
+import { useAuthStore } from '../store/authStore'
 import { shortLabel } from '../utils/formStructure'
 import { THEME_KEYS, DEFAULT_THEME } from '../utils/ops'
 import { captureFormThumbnail } from '../utils/captureFormThumbnail'
@@ -66,9 +68,21 @@ export default function FormEditorLayout() {
   const [statusBusy, setStatusBusy] = useState(false)
   const [showTheme, setShowTheme] = useState(false)
   const [showShare, setShowShare] = useState(false)
-  const [activeQuestionIndex, setActiveQuestionIndex] = useState(null)
+  // The selection follows the question (by key), so remote inserts/moves above it do not shift it.
+  const [activeKey, setActiveKey] = useState(null)
+  const [presenceRows, setPresenceRows] = useState([])
+  const myId = useAuthStore((s) => s.user?.id)
   const autosaveRef = useRef(null)
+  const syncRef = useRef(null)
   const thumbDirtyRef = useRef(false)
+  const activeKeyRef = useRef(null)
+  const fields = useFormStore((s) => s.fields)
+  const activeIndex = activeKey ? fields.findIndex((f) => f.key === activeKey) : -1
+  const activeQuestionIndex = activeIndex >= 0 ? activeIndex : null
+  activeKeyRef.current = activeQuestionIndex != null ? activeKey : null
+  const setActiveQuestionIndex = useCallback((index) => {
+    setActiveKey(index == null ? null : useFormStore.getState().fields[index]?.key ?? null)
+  }, [])
 
   const isEditTab = pathname.endsWith('/edit')
   const isEditTabRef = useRef(isEditTab)
@@ -104,6 +118,7 @@ export default function FormEditorLayout() {
     setLoading(true)
     setSaveState(INITIAL_SAVE_STATE)
     setActiveQuestionIndex(null)
+    setPresenceRows([])
     thumbDirtyRef.current = false
     const autosave = createAutosave({
       formId: id,
@@ -112,11 +127,24 @@ export default function FormEditorLayout() {
       onSaved: () => { thumbDirtyRef.current = true },
     })
     autosaveRef.current = autosave
+    const sync = createLiveSync({
+      formId: id,
+      autosave,
+      getActiveField: () => activeKeyRef.current,
+      onPresence: (rows) => !cancelled && setPresenceRows(rows),
+      onFatal: (status) => {
+        if (cancelled) return
+        setPresenceRows([])
+        toast.error(status === 404 ? 'Biểu mẫu không còn tồn tại' : 'Bạn không còn quyền truy cập biểu mẫu này', { id: 'sync-fatal' })
+      },
+    })
+    syncRef.current = sync
     formAPI.getOne(id)
       .then((res) => {
         if (cancelled) return
         loadForm(res.data)
         autosave.reset()
+        sync.start()
       })
       .catch(() => {
         if (cancelled) return
@@ -134,6 +162,8 @@ export default function FormEditorLayout() {
     return () => {
       cancelled = true
       clearInterval(thumbTimer)
+      sync.dispose()
+      if (syncRef.current === sync) syncRef.current = null
       // Leaving the editor: send what is left and refresh the thumbnail before the store is cleared.
       autosave.flush()
       if (thumbDirtyRef.current) captureThumbnail(useFormStore.getState())
@@ -146,6 +176,29 @@ export default function FormEditorLayout() {
   useEffect(() => {
     if (!isEditTab) setShowTheme(false)
   }, [isEditTab])
+
+  // Selection is presence: tell the others soon.
+  const selectedKey = activeKeyRef.current
+  useEffect(() => {
+    syncRef.current?.poke()
+  }, [selectedKey])
+
+  // Other people (one entry per user, tabs merged; never me) and who has which question selected.
+  const presence = useMemo(() => {
+    const users = new Map()
+    for (const row of presenceRows) {
+      if (row.user_id === myId) continue
+      const user = users.get(row.user_id) || { user_id: row.user_id, name: row.name, fields: [] }
+      if (row.active_field_key && !user.fields.includes(row.active_field_key)) user.fields.push(row.active_field_key)
+      users.set(row.user_id, user)
+    }
+    return [...users.values()]
+  }, [presenceRows, myId])
+  const presenceByField = useMemo(() => {
+    const map = {}
+    for (const user of presence) for (const key of user.fields) (map[key] ||= []).push(user)
+    return map
+  }, [presence])
 
   // Switching tab sends the queue right away.
   useEffect(() => {
@@ -342,7 +395,7 @@ export default function FormEditorLayout() {
     flushSave: () => autosaveRef.current?.flush(),
     /** Settings tab: toggles save at once (`delay: 0`), text/number after 1.5 s. Not in undo history. */
     updateSettings,
-    /** Phase 5 entry point for ops from other users (see autosave.applyRemote). */
+    /** Ops from other users (live sync goes through autosave.applyRemote). */
     applyRemoteOps: (ops, meta) => autosaveRef.current?.applyRemote(ops, meta),
     undo,
     redo,
@@ -356,7 +409,8 @@ export default function FormEditorLayout() {
     duplicate,
     remove,
     goHome,
-    presence: [],
+    presence,
+    presenceByField,
     activeQuestionIndex,
     setActiveQuestionIndex,
     responseCount,

@@ -90,6 +90,7 @@ export default function EditableTitle({ title, description, onChange, theme, cla
             <input
               ref={titleRef}
               type="text"
+              data-prop="title"
               value={localTitle}
               onChange={(e) => setLocalTitle(e.target.value)}
               onBlur={handleTitleBlur}
@@ -117,7 +118,7 @@ export default function EditableTitle({ title, description, onChange, theme, cla
         )}
 
         {editingDescription ? (
-          <div className="eforms-input-wrapper">
+          <div className="eforms-input-wrapper" data-prop="description">
             <RichTextEditor
               value={localDescription}
               onChange={(html) => setLocalDescription(html)}

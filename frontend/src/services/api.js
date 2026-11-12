@@ -3,18 +3,12 @@ import { newKey } from '../utils/formStructure'
 
 export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
 
-/** Stable per browser tab: lets the server skip this tab's own changes (ops log, legacy endpoints). */
-export const clientId = (() => {
-  try {
-    const saved = sessionStorage.getItem('eforms_client_id')
-    if (saved) return saved
-    const id = newKey()
-    sessionStorage.setItem('eforms_client_id', id)
-    return id
-  } catch {
-    return newKey()
-  }
-})()
+/**
+ * One per page load: lets the server skip this page's own changes (ops log, legacy endpoints).
+ * Not kept in sessionStorage – a duplicated tab copies it, and both tabs would then skip each other's changes.
+ * A reloaded page loads the form fresh, so it does not need the old id either.
+ */
+export const clientId = newKey()
 
 const api = axios.create({
   baseURL: API_URL,
@@ -147,6 +141,7 @@ export const formAPI = {
   duplicate: (id) => api.post(`/forms/${id}/duplicate`),
   getStatistics: (id) => api.get(`/forms/${id}/statistics`),
   ops: (id, data) => api.post(`/forms/${id}/ops`, data),
+  changes: (id, params) => api.get(`/forms/${id}/changes`, { params }),
 }
 
 // Collaborator APIs

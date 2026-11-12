@@ -1,15 +1,49 @@
 import { formAPI, API_URL, clientId, authHeaders } from './api'
 import { useFormStore, docOf, onLocalChange } from '../store/formStore'
-import { applyOps, diffDocs, invertSet, applySet, stableStringify } from '../utils/ops'
+import { applyOps, diffDocs, invertSet, applySet, stableStringify, sameValue } from '../utils/ops'
 import { destructiveChanges } from '../utils/formStructure'
 
 const MAX_RETRY_MS = 60000
 const KEEPALIVE_LIMIT = 60000
 // Props whose change can break collected answers; everything else in the same update is saved right away.
 const RISKY_PROP = /^(type|options|rows|columns|settings|validation_rules)(\.|$)/
+const FORM_TARGET = '@form'
+const NON_TEXT_INPUTS = ['checkbox', 'radio', 'button', 'submit', 'reset', 'file', 'range', 'color', 'hidden']
 
 const sig = (op) => stableStringify(op)
 const propsOverlap = (a, b) => a === b || a.startsWith(`${b}.`) || b.startsWith(`${a}.`)
+const target = (op) => (op.type === 'form.update' ? FORM_TARGET : op.key)
+
+/** Value of `prop` ("label", "settings.other_option") of a field (`key`) or of the form (`@form`). */
+function valueAt(doc, key, prop) {
+  const obj = key === FORM_TARGET ? doc.form : doc.fields.find((f) => f.key === key)
+  if (!obj) return undefined
+  const [head, item] = prop.split('.', 2)
+  return item === undefined ? obj[head] : obj[head]?.[item]
+}
+
+const containsText = (value, text, depth = 0) => {
+  if (value == null || depth > 2) return false
+  if (typeof value !== 'object') return String(value) === text
+  return Object.values(value).some((v) => containsText(v, text, depth + 1))
+}
+
+/**
+ * The text input the user is in: `{key, prop, text, scope}`. `key` from the closest `[data-field-key]`
+ * (none = form), `prop` from the closest `[data-prop]`; without `data-prop` the edited prop is guessed
+ * by matching the input's text against the prop values.
+ */
+function focusedInput() {
+  const el = typeof document !== 'undefined' ? document.activeElement : null
+  if (!el || !(el.isContentEditable || el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !NON_TEXT_INPUTS.includes(el.type)))) return null
+  const propEl = el.closest('[data-prop]')
+  return {
+    key: el.closest('[data-field-key]')?.getAttribute('data-field-key') || FORM_TARGET,
+    prop: propEl?.getAttribute('data-prop') || null,
+    text: el.isContentEditable ? el.innerHTML : el.value,
+    scope: propEl || el,
+  }
+}
 
 /**
  * Autosave (plan §4.4, §4.6). Keeps a snapshot of the document as the server has it; the queue is
@@ -28,8 +62,13 @@ export function createAutosave({ formId, onState, onRejected, onSaved }) {
   let again = false
   let networkError = null
   let disposed = false
+  let saveSeq = 0
   const held = new Map()
   const approved = new Set()
+  // Remote values for the input being typed in: `${target}|${prop}` → {type, key, prop, local, scope}.
+  const focusHolds = new Map()
+  // Our applied batches the poll has not caught up with yet: remote batches older than these lose to them.
+  let ownBatches = []
   let state = { status: 'saved', savedAt: null, paused: [], error: null, unsaved: false }
 
   const store = () => useFormStore.getState()
@@ -44,8 +83,50 @@ export function createAutosave({ formId, onState, onRejected, onSaved }) {
     return destructiveChanges([{ ...before, id: op.key }], after ? [{ ...after, id: op.key }] : [])
   }
 
+  /**
+   * `diff(snapshot, local)` minus props held for the focused input that the user has not changed since
+   * (local still has the old value there only because the remote one waits for blur).
+   */
+  function pendingOps() {
+    const doc = local()
+    const ops = diffDocs(server, doc)
+    if (!focusHolds.size) return ops
+    const holds = [...focusHolds.values()]
+    return ops.map((op) => {
+      if (op.type !== 'field.update' && op.type !== 'form.update') return op
+      const t = target(op)
+      const set = Object.fromEntries(Object.entries(op.set).filter(([k]) => !holds.some((h) => (
+        h.key === t && propsOverlap(h.prop, k) && sameValue(valueAt(doc, t, h.prop), h.local)
+      ))))
+      return Object.keys(set).length ? { ...op, set } : null
+    }).filter(Boolean)
+  }
+
+  /** Focus left the input: apply the held remote values the user did not overwrite (else local wins). */
+  function releaseHolds() {
+    if (!focusHolds.size || !server) return
+    const active = document.activeElement
+    const doc = local()
+    const apply = []
+    for (const [id, h] of focusHolds) {
+      if (h.scope?.isConnected && h.scope.contains(active)) continue
+      focusHolds.delete(id)
+      if (!sameValue(valueAt(doc, h.key, h.prop), h.local)) continue
+      if (h.key !== FORM_TARGET && !server.fields.some((f) => f.key === h.key)) continue
+      const set = { [h.prop]: valueAt(server, h.key, h.prop) ?? null }
+      apply.push(h.key === FORM_TARGET ? { type: 'form.update', set } : { type: 'field.update', key: h.key, set })
+    }
+    if (apply.length) store().applyRemoteOps(apply, { conflictOps: [] })
+    refresh()
+  }
+  const onFocusChange = () => setTimeout(releaseHolds, 0)
+  if (typeof document !== 'undefined') {
+    document.addEventListener('focusin', onFocusChange)
+    document.addEventListener('focusout', onFocusChange)
+  }
+
   function plan() {
-    const ops = diffDocs(server, local())
+    const ops = pendingOps()
     const send = []
     const paused = []
     const heldOps = []
@@ -143,7 +224,11 @@ export function createAutosave({ formId, onState, onRejected, onSaved }) {
     }
     if (Object.keys(forced).length) server = { ...server, form: applySet(server.form, forced) }
     if (Object.keys(ids).length || Object.keys(forced).length) store().adoptServerValues({ ids, form: Object.keys(forced).length ? forced : null })
-    if (revision != null && applied.length) store().advanceRevision(revision)
+    if (revision != null && applied.length) {
+      store().advanceRevision(revision)
+      ownBatches = [...ownBatches, { revision, ops: applied.map(({ index }) => sent[index]).filter(Boolean) }]
+        .filter((b) => b.revision > store().revision)
+    }
 
     for (const r of rejected) {
       const op = sent[r.index]
@@ -197,6 +282,7 @@ export function createAutosave({ formId, onState, onRejected, onSaved }) {
       return inFlight
     }
     clearTimeout(retryTimer)
+    saveSeq++
     inFlightSigs = new Set(toSend.map(sig))
     inFlight = post(body, keepalive)
       .then((data) => handleResponse(toSend, data))
@@ -227,12 +313,21 @@ export function createAutosave({ formId, onState, onRejected, onSaved }) {
       server = local()
       held.clear()
       approved.clear()
+      focusHolds.clear()
+      ownBatches = []
       networkError = null
       refresh()
     },
 
     schedule,
     flush,
+    pendingOps: () => (server ? pendingOps() : []),
+    /** Resolves when no save is in flight. */
+    async idle() {
+      while (inFlight) await inFlight
+    },
+    /** Increases with every save sent. */
+    saveSeq: () => saveSeq,
 
     /** "Thử lại": resend everything, including ops the server rejected before. */
     retry() {
@@ -242,7 +337,7 @@ export function createAutosave({ formId, onState, onRejected, onSaved }) {
       return flush()
     },
 
-    hasUnsaved: () => !!server && (inFlight !== null || diffDocs(server, local()).length > 0),
+    hasUnsaved: () => !!server && (inFlight !== null || pendingOps().length > 0),
 
     /** [Vẫn lưu] on the destructive banner. */
     approvePaused() {
@@ -276,22 +371,49 @@ export function createAutosave({ formId, onState, onRejected, onSaved }) {
     },
 
     /**
-     * Phase 5: ops from other users. Updates the snapshot, applies them locally without history/dirty,
-     * but keeps local values the user changed and has not saved yet (they win when sent).
+     * Ops from other users, one batch at a time in revision order (`revision` of the batch). Updates the
+     * snapshot and applies them locally without history/dirty, except:
+     * - props our own later batches set (already in the snapshot; they won on the server too),
+     * - local values the user changed and has not saved yet (they win when sent),
+     * - the prop of the input being typed in: held until blur, then applied if the user left it as it was.
+     * Call only when no save is in flight (`idle()`), so the snapshot order matches the server's.
      */
-    applyRemote(ops, { user = null } = {}) {
+    applyRemote(ops, { user = null, revision = null } = {}) {
       if (!server) return
-      const pending = diffDocs(server, local())
-      const target = (op) => (op.type === 'form.update' ? '@form' : op.key)
-      const localOps = ops.map((op) => {
-        if (op.type !== 'field.update' && op.type !== 'form.update') return op
-        const mine = pending.find((p) => p.type === op.type && target(p) === target(op))
-        if (!mine) return op
-        const set = Object.fromEntries(Object.entries(op.set).filter(([k]) => !Object.keys(mine.set).some((m) => propsOverlap(m, k))))
-        return Object.keys(set).length ? { ...op, set } : null
-      }).filter(Boolean)
-      server = applyOps(server, ops)
-      store().applyRemoteOps(localOps, { user, conflictOps: ops })
+      ownBatches = ownBatches.filter((b) => b.revision > store().revision)
+      const doc = local()
+      const pending = pendingOps()
+      const later = revision == null ? [] : ownBatches.filter((b) => b.revision > revision).flatMap((b) => b.ops)
+      const focus = focusedInput()
+      const setBy = (list, op, k) => list.some((p) => p.type === op.type && target(p) === target(op) && Object.keys(p.set || {}).some((m) => propsOverlap(m, k)))
+      const serverOps = []
+      const localOps = []
+      for (const op of ops) {
+        if (op.type === 'field.move' && later.some((o) => (o.type === 'field.move' || o.type === 'field.insert') && o.key === op.key)) continue
+        if (op.type !== 'field.update' && op.type !== 'form.update') {
+          serverOps.push(op)
+          localOps.push(op)
+          continue
+        }
+        const t = target(op)
+        const serverSet = {}
+        const localSet = {}
+        for (const [k, v] of Object.entries(op.set || {})) {
+          if (setBy(later, op, k)) continue
+          serverSet[k] = v
+          if (setBy(pending, op, k)) continue
+          const before = valueAt(doc, t, k)
+          if (focus && focus.key === t && (focus.prop ? propsOverlap(focus.prop, k) : containsText(before, focus.text))) {
+            focusHolds.set(`${t}|${k}`, { type: op.type, key: t, prop: k, local: before, scope: focus.scope })
+            continue
+          }
+          localSet[k] = v
+        }
+        if (Object.keys(serverSet).length) serverOps.push({ ...op, set: serverSet })
+        if (Object.keys(localSet).length) localOps.push({ ...op, set: localSet })
+      }
+      server = applyOps(server, serverOps)
+      store().applyRemoteOps(localOps, { user, conflictOps: serverOps })
       refresh()
     },
 
@@ -300,6 +422,8 @@ export function createAutosave({ formId, onState, onRejected, onSaved }) {
       clearTimeout(timer)
       clearTimeout(retryTimer)
       unsubscribe()
+      document.removeEventListener('focusin', onFocusChange)
+      document.removeEventListener('focusout', onFocusChange)
     },
   }
 }

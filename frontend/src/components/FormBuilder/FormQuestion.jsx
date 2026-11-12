@@ -415,7 +415,7 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
       {!isSpecialType && (
         <div className="eforms-question-header">
           {editingQuestion && isActive ? (
-            <div className="eforms-input-wrapper" style={{ flex: 1, marginBottom: 0 }}>
+            <div className="eforms-input-wrapper" data-prop="label" style={{ flex: 1, marginBottom: 0 }}>
               <input
                 ref={questionInputRef}
                 type="text"
@@ -535,6 +535,7 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
 
       {!isSpecialType && (isActive ? (
         <textarea
+          data-prop="help_text"
           value={editData.help_text || ''}
           onChange={(e) => handleUpdate({ help_text: e.target.value })}
           onClick={(e) => e.stopPropagation()}
@@ -596,7 +597,7 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
 
         {/* Options-based fields */}
         {needsOptions && !settings.piped_from && (
-          <div className="space-y-2">
+          <div className="space-y-2" data-prop="options">
             <DndContext
               sensors={gridSensors}
               collisionDetection={closestCenter}
@@ -637,7 +638,7 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
                   className="eforms-option-radio"
                 />
                 {isActive ? (
-                  <div className="eforms-input-wrapper" style={{ flex: 1, marginBottom: 0 }}>
+                  <div className="eforms-input-wrapper" data-prop="settings.other_option" style={{ flex: 1, marginBottom: 0 }}>
                     <input
                       type="text"
                       value={otherOption.label || ''}
@@ -710,7 +711,7 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
               <>
                 <div className="grid grid-cols-2 gap-6">
                   {/* Hàng */}
-                  <div>
+                  <div data-prop="rows">
                     <label className="text-sm font-medium text-gray-700 mb-3 block">Hàng</label>
                     <DndContext
                       sensors={gridSensors}
@@ -750,7 +751,7 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
                   </div>
 
                   {/* Cột */}
-                  <div>
+                  <div data-prop="columns">
                     <label className="text-sm font-medium text-gray-700 mb-3 block">Cột</label>
                     <DndContext
                       sensors={gridSensors}
@@ -858,6 +859,7 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
               <>
                 <input
                   type="text"
+                  data-prop="label"
                   value={editData.label}
                   onChange={(e) => handleUpdate({ label: e.target.value })}
                   onFocus={(e) => {
@@ -887,7 +889,7 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
                   }}
                   placeholder="Tiêu đề"
                 />
-                <div className="mt-2">
+                <div className="mt-2" data-prop="description">
                   <RichTextEditor
                     value={editData.description || ''}
                     onChange={(html) => handleUpdate({ description: html })}
@@ -1024,6 +1026,7 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
               <>
                 <input
                   type="text"
+                  data-prop="label"
                   value={editData.label}
                   onChange={(e) => handleUpdate({ label: e.target.value })}
                   onFocus={(e) => {
@@ -1053,7 +1056,7 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
                   }}
                   placeholder="Phần chưa có tiêu đề"
                 />
-                <div className="mt-2">
+                <div className="mt-2" data-prop="description">
                   <RichTextEditor
                     value={editData.description || ''}
                     onChange={(html) => handleUpdate({ description: html })}

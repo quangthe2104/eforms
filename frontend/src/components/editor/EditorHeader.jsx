@@ -28,6 +28,7 @@ function HeaderTitle({ value, onChange, readOnly }) {
       </span>
       <input
         aria-label="Tiêu đề biểu mẫu"
+        data-prop="title"
         value={value}
         placeholder={TITLE_PLACEHOLDER}
         onChange={(e) => onChange(e.target.value)}

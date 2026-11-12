@@ -179,13 +179,14 @@ export default function RandomSectionCard({ field, index, isActive, onClick, the
         <>
           <input
             type="text"
+            data-prop="label"
             value={field.label || ''}
             onChange={(e) => updateField(index, { label: e.target.value })}
             onFocus={stop}
             className="w-full text-xl font-medium text-gray-900 px-3 py-2 outline-none bg-transparent border-b-2 border-transparent focus:border-current"
             placeholder="Tiêu đề phần ngẫu nhiên"
           />
-          <div className="mt-2">
+          <div className="mt-2" data-prop="description">
             <RichTextEditor
               value={field.description || ''}
               onChange={(html) => updateField(index, { description: html })}
