@@ -1,16 +1,28 @@
 import { useEffect, useState, useRef } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { formAPI } from '../../services/api'
-import { Plus, Trash2, Copy, Edit, ChevronDown, MoreVertical, Share2, BarChart3, CheckCircle } from 'lucide-react'
+import { Plus, Trash2, Copy, Edit, Eye, ChevronDown, MoreVertical, Share2, BarChart3, CheckCircle, Users } from 'lucide-react'
 import toast from 'react-hot-toast'
 import FormThumbnail from '../../components/FormThumbnail'
+import Tooltip from '../../components/editor/Tooltip'
+import { ROLE_LABELS } from '../../utils/roles'
+import { useAuthStore } from '../../store/authStore'
+
+// `GET /forms?filter=`: "mine" = I am an owner, "shared" = I am an editor/viewer.
+const OWNERSHIP_FILTERS = [
+  { value: 'all', label: 'Tất cả' },
+  { value: 'mine', label: 'Của tôi' },
+  { value: 'shared', label: 'Được chia sẻ' },
+]
 
 export default function FormList() {
   const navigate = useNavigate()
+  const myId = useAuthStore((s) => s.user?.id)
   const [forms, setForms] = useState([])
   const [loading, setLoading] = useState(true)
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const searchTerm = searchParams.get('search') || ''
+  const ownership = OWNERSHIP_FILTERS.some((f) => f.value === searchParams.get('filter')) ? searchParams.get('filter') : 'all'
   const [statusFilter, setStatusFilter] = useState('all')
   const [filterDropdownOpen, setFilterDropdownOpen] = useState(false)
   const [activeMenuFormId, setActiveMenuFormId] = useState(null)
@@ -19,7 +31,14 @@ export default function FormList() {
 
   useEffect(() => {
     fetchForms()
-  }, [statusFilter])
+  }, [statusFilter, ownership])
+
+  const setOwnership = (value) => {
+    const next = new URLSearchParams(searchParams)
+    if (value === 'all') next.delete('filter')
+    else next.set('filter', value)
+    setSearchParams(next, { replace: true })
+  }
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -42,6 +61,7 @@ export default function FormList() {
       if (statusFilter !== 'all') {
         params.status = statusFilter
       }
+      if (ownership !== 'all') params.filter = ownership
       
       const response = await formAPI.getAll(params)
       setForms(response.data.data || [])
@@ -133,8 +153,24 @@ export default function FormList() {
   return (
     <div>
       {/* Header and Filters */}
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-gray-900">Biểu mẫu của tôi</h1>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-4">
+          <h1 className="text-xl font-semibold text-gray-900">Biểu mẫu</h1>
+          <div role="group" aria-label="Lọc theo quyền sở hữu" className="inline-flex rounded-full border border-gray-300 p-0.5 bg-white">
+            {OWNERSHIP_FILTERS.map((f) => (
+              <button
+                key={f.value}
+                type="button"
+                data-filter={f.value}
+                aria-pressed={ownership === f.value}
+                onClick={() => setOwnership(f.value)}
+                className={`px-3 py-1 text-sm rounded-full transition-colors ${ownership === f.value ? 'bg-primary-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
         
         {/* Custom Dropdown */}
         <div className="relative" ref={filterDropdownRef}>
@@ -190,9 +226,19 @@ export default function FormList() {
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Không tìm thấy biểu mẫu</h3>
             <p className="text-gray-600">Thử điều chỉnh tìm kiếm của bạn</p>
           </div>
+        ) : filteredForms.length === 0 && ownership === 'shared' ? (
+          <div className="col-span-full md:col-span-1 lg:col-span-2 xl:col-span-3 card text-center py-12" data-forms-empty>
+            <Users className="w-10 h-10 text-gray-400 mx-auto mb-3" />
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Chưa có biểu mẫu nào được chia sẻ với bạn</h3>
+            <p className="text-gray-600">Khi ai đó thêm bạn làm người chỉnh sửa hoặc người xem, biểu mẫu sẽ hiện ở đây.</p>
+          </div>
         ) : (
-          filteredForms.map((form) => (
-            <div key={form.id} className="card hover:shadow-lg transition-all group overflow-hidden">
+          filteredForms.map((form) => {
+            const role = form.my_role || 'owner'
+            const shared = role !== 'owner' || (form.collaborators_count || 0) > 1
+            const ownerName = form.owner?.name
+            return (
+            <div key={form.id} data-form-card={form.id} data-my-role={role} className="card hover:shadow-lg transition-all group overflow-hidden">
               {/* Thumbnail with Status Badge */}
               <div 
                 onClick={() => navigate(`/forms/${form.id}/edit`)}
@@ -227,10 +273,25 @@ export default function FormList() {
                   {form.title}
                 </h3>
 
-                {/* Date */}
-                <p className="text-xs text-gray-500">
-                  {formatDate(form.updated_at || form.created_at)}
-                </p>
+                {/* Date, sharing */}
+                <div className="flex items-center gap-2 text-xs text-gray-500 min-w-0">
+                  {shared && (
+                    <Tooltip label={role === 'owner' ? `Đã chia sẻ với ${(form.collaborators_count || 1) - 1} người` : 'Được chia sẻ với bạn'}>
+                      <span data-shared-icon tabIndex={0} aria-label="Đã chia sẻ" className="flex-shrink-0 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500">
+                        <Users className="w-3.5 h-3.5 text-gray-500" />
+                      </span>
+                    </Tooltip>
+                  )}
+                  <span className="flex-shrink-0">{formatDate(form.updated_at || form.created_at)}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2 text-xs min-w-0">
+                  <span className="text-gray-600 truncate" data-owner>
+                    Chủ sở hữu: {form.owner ? (form.owner.id === myId ? 'Tôi' : ownerName) : '—'}
+                  </span>
+                  <span data-role-badge className={`flex-shrink-0 px-1.5 py-0.5 rounded ${role === 'owner' ? 'bg-primary-50 text-primary-700' : role === 'editor' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                    {ROLE_LABELS[role]}
+                  </span>
+                </div>
 
                 {/* Action Buttons */}
                 <div className="pt-3 border-t border-gray-100 flex items-stretch gap-2">
@@ -288,8 +349,8 @@ export default function FormList() {
                           }}
                           className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
                         >
-                          <Edit className="w-4 h-4" />
-                          <span>Chỉnh sửa</span>
+                          {role === 'viewer' ? <Eye className="w-4 h-4" /> : <Edit className="w-4 h-4" />}
+                          <span>{role === 'viewer' ? 'Mở (chỉ xem)' : 'Chỉnh sửa'}</span>
                         </button>
                         <button
                           onClick={() => {
@@ -301,24 +362,31 @@ export default function FormList() {
                           <Copy className="w-4 h-4" />
                           <span>Nhân bản</span>
                         </button>
-                        <div className="border-t border-gray-200 my-1"></div>
-                        <button
-                          onClick={() => {
-                            setActiveMenuFormId(null)
-                            handleDelete(form.id)
-                          }}
-                          className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                          <span>Xóa</span>
-                        </button>
+                        {/* Only owners may delete (plan §4.8) */}
+                        {role === 'owner' && (
+                          <>
+                            <div className="border-t border-gray-200 my-1"></div>
+                            <button
+                              data-card-action="delete"
+                              onClick={() => {
+                                setActiveMenuFormId(null)
+                                handleDelete(form.id)
+                              }}
+                              className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                              <span>Xóa</span>
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
                 </div>
               </div>
             </div>
-          ))
+            )
+          })
         )}
       </div>
     </div>

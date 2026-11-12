@@ -5,6 +5,7 @@ import { useFormStore } from '../../store/formStore'
 import { useEditor } from '../../layouts/FormEditorLayout'
 import { newKey, shortLabel } from '../../utils/formStructure'
 import { stableStringify } from '../../utils/ops'
+import { limitForcesLogin, FORCED_LOGIN_HINT } from '../../utils/respondentAccess'
 
 const LIMIT_METHODS = [
   { value: 'device', label: 'Mã thiết bị ẩn danh', hint: 'Lưu trong trình duyệt; người cố tình vẫn lách được bằng tab ẩn danh hoặc trình duyệt khác.' },
@@ -71,7 +72,6 @@ export default function FormSettingsTab() {
 
   const settings = {
     is_public: form?.is_public ?? true,
-    accept_responses: form?.accept_responses ?? true,
     show_progress_bar: form?.show_progress_bar ?? false,
     shuffle_questions: form?.shuffle_questions ?? false,
     limit_responses: form?.limit_responses ?? false,
@@ -83,7 +83,7 @@ export default function FormSettingsTab() {
   const setText = (patch) => updateSettings(patch, { delay: TEXT_DELAY })
 
   const methods = limit.methods || []
-  const usesAccount = limit.enabled && methods.includes('account')
+  const usesAccount = limitForcesLogin(limit)
   const candidates = (type) => fields.filter((f) => f.type === type && !f.random_group_key)
 
   const updateLimit = (patch, delay = 0) => {
@@ -143,22 +143,6 @@ export default function FormSettingsTab() {
             </label>
           </div>
 
-          {/* Accept Responses */}
-          <div>
-            <label className="flex items-center space-x-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={settings.accept_responses}
-                onChange={toggle('accept_responses')}
-                className="w-5 h-5 text-primary-600 rounded"
-              />
-              <div>
-                <div className="font-medium text-gray-900">Chấp Nhận Phản Hồi</div>
-                <div className="text-sm text-gray-600">Cho phép mọi người gửi phản hồi</div>
-              </div>
-            </label>
-          </div>
-
           {/* Progress Bar */}
           <div>
             <label className="flex items-center space-x-3 cursor-pointer">
@@ -196,6 +180,7 @@ export default function FormSettingsTab() {
             <label className="flex items-center space-x-3 cursor-pointer">
               <input
                 type="checkbox"
+                data-setting="require_login"
                 checked={settings.require_login || usesAccount}
                 disabled={usesAccount}
                 onChange={toggle('require_login')}
@@ -204,9 +189,7 @@ export default function FormSettingsTab() {
               <div>
                 <div className="font-medium text-gray-900">Yêu Cầu Đăng Nhập</div>
                 <div className="text-sm text-gray-600">
-                  {usesAccount
-                    ? 'Đang bật vì "Giới hạn mỗi người trả lời" dùng căn cứ Tài khoản đăng nhập'
-                    : 'Chỉ người dùng đã đăng nhập mới có thể gửi'}
+                  {usesAccount ? FORCED_LOGIN_HINT : 'Chỉ người dùng đã đăng nhập mới có thể gửi'}
                 </div>
               </div>
             </label>

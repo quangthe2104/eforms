@@ -106,6 +106,8 @@ class FormSyncController extends Controller
             'changes' => $reset ? [] : $changes,
             'presence' => $presence,
             'reset' => $reset,
+            // Role changes made in the share dialog reach open editors without a reload.
+            'my_role' => $form->roleFor($request->user()),
         ]);
     }
 }

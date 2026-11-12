@@ -253,7 +253,8 @@ class FormOpsTest extends TestCase
         $this->seedFields('a');
 
         $this->ops([['type' => 'field.delete', 'key' => 'a']], 'v1', $viewer)->assertForbidden();
-        $this->poll(0, 'v1', $viewer)->assertOk()->assertJsonPath('revision', 0);
+        $this->poll(0, 'v1', $viewer)->assertOk()->assertJsonPath('revision', 0)->assertJsonPath('my_role', 'viewer');
+        $this->poll(0, 'o1')->assertJsonPath('my_role', 'owner');
         $this->actingAs($this->makeUser())->getJson("/api/forms/{$this->form->id}/changes?since=0&client_id=x")->assertForbidden();
     }
 

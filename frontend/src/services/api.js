@@ -92,7 +92,8 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
-      window.location.href = '/login'
+      // The invite page handles a stale session itself (it continues as signed out).
+      if (!window.location.pathname.startsWith('/invite/')) window.location.href = '/login'
     }
     return Promise.reject(error)
   }
@@ -147,6 +148,27 @@ export const formAPI = {
 // Collaborator APIs
 export const collaboratorAPI = {
   list: (formId) => api.get(`/forms/${formId}/collaborators`),
+  /** `{user_id | email, role, notify?, message?}`: an unknown email becomes an invitation (`invite_url`). */
+  add: (formId, data) => api.post(`/forms/${formId}/collaborators`, data),
+  update: (formId, userId, role) => api.patch(`/forms/${formId}/collaborators/${userId}`, { role }),
+  remove: (formId, userId) => api.delete(`/forms/${formId}/collaborators/${userId}`),
+  /** Both issue a new token: the previous invite link stops working. */
+  resendInvitation: (formId, invitationId) => api.post(`/forms/${formId}/invitations/${invitationId}/resend`),
+  invitationLink: (formId, invitationId) => api.post(`/forms/${formId}/invitations/${invitationId}/link`),
+  cancelInvitation: (formId, invitationId) => api.delete(`/forms/${formId}/invitations/${invitationId}`),
+}
+
+export const userAPI = {
+  search: (q, formId) => api.get('/users/search', { params: { q, ...(formId && { form_id: formId }) } }),
+}
+
+// Invite links (/invite/:token): `show` is public; 404 reason "invalid", 410 reason "expired" | "used"
+export const invitationAPI = {
+  show: (token) => api.get(`/invitations/${encodeURIComponent(token)}`),
+  accept: async (token) => {
+    if (!getCookie('XSRF-TOKEN')) await getCsrfCookie()
+    return api.post(`/invitations/${encodeURIComponent(token)}/accept`)
+  },
 }
 
 // Form Field APIs

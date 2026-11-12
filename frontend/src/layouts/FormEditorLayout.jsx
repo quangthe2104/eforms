@@ -13,6 +13,8 @@ import EditorHeader from '../components/editor/EditorHeader'
 import ShareDialog from '../components/editor/ShareDialog'
 import DestructiveBanner from '../components/editor/DestructiveBanner'
 import FormTheme from '../components/FormTheme'
+import { ROLE_LABELS } from '../utils/roles'
+import { copyText } from '../utils/clipboard'
 
 /** Editor state shared by the three tabs (Câu hỏi, Câu trả lời, Cài đặt). */
 export const useEditor = () => useOutletContext()
@@ -24,17 +26,6 @@ const STATUS_TOASTS = {
 }
 const THUMBNAIL_EVERY_MS = 2 * 60 * 1000
 const INITIAL_SAVE_STATE = { status: 'saved', savedAt: null, paused: [], error: null, unsaved: false }
-
-const copyText = (text) => {
-  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text)
-  const textarea = document.createElement('textarea')
-  textarea.value = text
-  document.body.appendChild(textarea)
-  textarea.select()
-  document.execCommand('copy')
-  document.body.removeChild(textarea)
-  return Promise.resolve()
-}
 
 const isTextInput = (el) => !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))
 
@@ -132,6 +123,7 @@ export default function FormEditorLayout() {
       autosave,
       getActiveField: () => activeKeyRef.current,
       onPresence: (rows) => !cancelled && setPresenceRows(rows),
+      onRole: (next) => !cancelled && toast(`Vai trò của bạn đã đổi thành ${ROLE_LABELS[next] || next}`, { id: 'role-changed' }),
       onFatal: (status) => {
         if (cancelled) return
         setPresenceRows([])
@@ -272,9 +264,10 @@ export default function FormEditorLayout() {
     if (publishing) await autosaveRef.current?.flush()
     setStatusBusy(true)
     try {
-      const response = await formAPI.update(id, { status })
+      // accept_responses is no longer editable (status is the switch); clear a legacy "off" so it cannot block responses.
+      const response = await formAPI.update(id, { status, ...(status === 'published' && latest.accept_responses === false && { accept_responses: true }) })
       const saved = response.data.form || {}
-      patchForm({ status: saved.status ?? status, slug: saved.slug ?? latest.slug })
+      patchForm({ status: saved.status ?? status, slug: saved.slug ?? latest.slug, accept_responses: saved.accept_responses ?? latest.accept_responses })
       if (saved.revision != null) useFormStore.getState().advanceRevision(saved.revision)
       toast.success(latest.status === 'closed' && status === 'published' ? 'Biểu mẫu đã nhận câu trả lời trở lại' : STATUS_TOASTS[status])
       if (publishing) captureThumbnail(useFormStore.getState())
@@ -443,8 +436,19 @@ export default function FormEditorLayout() {
       {showTheme && canEdit && (
         <FormTheme theme={theme} onClose={() => setShowTheme(false)} onPreview={handleThemeChange} />
       )}
-      {showShare && (
-        <ShareDialog formId={id} onClose={() => setShowShare(false)} onCopyLink={copyLink} />
+      {showShare && currentForm && (
+        <ShareDialog
+          formId={id}
+          title={title}
+          role={role}
+          onClose={() => setShowShare(false)}
+          onCopyLink={copyLink}
+          onRoleChanged={(next) => patchForm({ my_role: next })}
+          onLeft={() => {
+            setShowShare(false)
+            navigate('/forms', { replace: true })
+          }}
+        />
       )}
     </div>
   )

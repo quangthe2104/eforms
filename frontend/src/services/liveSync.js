@@ -6,9 +6,9 @@ import { applyOps } from '../utils/ops'
 /**
  * Live sync logic (plan §4.7), independent of the transport: applies other users' batches in revision
  * order through autosave (snapshot + store, no history/dirty), reloads on `reset` / `form.reload`,
- * reports presence. Viewers run it too (read-only).
+ * reports presence and role changes (`my_role`). Viewers run it too (read-only).
  */
-export function createLiveSync({ formId, autosave, getActiveField, onPresence, onFatal, createTransport = createPollingTransport }) {
+export function createLiveSync({ formId, autosave, getActiveField, onPresence, onRole, onFatal, createTransport = createPollingTransport }) {
   let disposed = false
   const store = () => useFormStore.getState()
 
@@ -45,7 +45,13 @@ export function createLiveSync({ formId, autosave, getActiveField, onPresence, o
       }
       store().setRevision(data.revision)
     }
-    if (!disposed) onPresence?.(data.presence || [])
+    if (disposed) return
+    onPresence?.(data.presence || [])
+    const role = data.my_role
+    if (role && store().currentForm && role !== store().currentForm.my_role) {
+      store().patchForm({ my_role: role })
+      onRole?.(role)
+    }
   }
 
   const transport = createTransport({

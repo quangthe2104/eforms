@@ -36,7 +36,8 @@ export const useAuthStore = create((set) => ({
       localStorage.setItem('token', token)
       
       set({ user, token, isAuthenticated: true, loading: false })
-      return { success: true }
+      // With an invite_token: `form_id` / `form_role` of the accepted invitation.
+      return { success: true, data: response.data }
     } catch (error) {
       const errorMessage = error.response?.data?.message || 'Registration failed'
       set({ error: errorMessage, loading: false })

@@ -1,4 +1,5 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { useState } from 'react'
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useSearchParams } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { useAuthStore } from './store/authStore'
 
@@ -18,20 +19,27 @@ import ResponseDetail from './pages/forms/ResponseDetail'
 import FormSettingsTab from './pages/forms/FormSettingsTab'
 import FormPreview from './pages/forms/FormPreview'
 import PublicForm from './pages/PublicForm'
+import Invite from './pages/Invite'
 import Profile from './pages/Profile'
 import ChangePassword from './pages/ChangePassword'
 import NotFound from './pages/NotFound'
 
-// Protected Route Component
+// Protected Route Component: Login returns to the page the user was going to.
 function ProtectedRoute({ children }) {
   const { isAuthenticated } = useAuthStore()
-  return isAuthenticated ? children : <Navigate to="/login" />
+  const location = useLocation()
+  return isAuthenticated ? children : <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />
 }
 
-// Public Route Component (redirect if authenticated)
+// Public Route Component: redirects users who arrive signed in. After signing in on the page itself the page
+// decides where to go (an invite goes to the form, not to /forms), so this only checks on arrival.
 function PublicRoute({ children }) {
   const { isAuthenticated } = useAuthStore()
-  return !isAuthenticated ? children : <Navigate to="/forms" />
+  const [searchParams] = useSearchParams()
+  const [signedInOnArrival] = useState(isAuthenticated)
+  if (!signedInOnArrival) return children
+  const invite = searchParams.get('invite')
+  return <Navigate to={invite ? `/invite/${encodeURIComponent(invite)}` : '/forms'} replace />
 }
 
 function App() {
@@ -51,6 +59,8 @@ function App() {
         <Route element={<AuthLayout />}>
           <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
           <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
+          {/* Works signed in or out (accepts, or sends to Login/Register) */}
+          <Route path="/invite/:token" element={<Invite />} />
         </Route>
 
         {/* Protected Routes */}
