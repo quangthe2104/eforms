@@ -90,6 +90,16 @@ export default function FormTheme({ theme, onClose, onPreview }) {
     return () => clearTimeout(timer)
   }, [])
 
+  // Follow outside changes (undo/redo, other editors) so the panel never re-sends stale values.
+  const themeSignature = Object.keys(settings).map((k) => theme?.[k] ?? '').join('|')
+  useEffect(() => {
+    setSettings((prev) => {
+      const changed = Object.keys(prev).filter((k) => theme?.[k] != null && theme[k] !== prev[k])
+      return changed.length ? { ...prev, ...Object.fromEntries(changed.map((k) => [k, theme[k]])) } : prev
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [themeSignature])
+
   // Apply theme changes immediately to parent (only when settings change)
   useEffect(() => {
     if (onPreview) {
@@ -271,7 +281,7 @@ export default function FormTheme({ theme, onClose, onPreview }) {
         <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
           <div>
             <h2 className="text-base font-bold text-gray-900">Giao Diện</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Thay đổi sẽ được lưu khi bấm "Lưu"</p>
+            <p className="text-xs text-gray-500 mt-0.5">Thay đổi được lưu tự động</p>
           </div>
           <button onClick={handleClose} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
             <X className="w-4 h-4" />

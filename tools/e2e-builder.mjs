@@ -49,13 +49,18 @@ page.on('dialog', (d) => d.accept())
 
 const card = (label) => page.locator('.eforms-question', { hasText: label }).first()
 const header = () => page.locator('.eforms-random-header').first()
-const saveBtn = () => page.locator('[data-hdr=save]')
+/** Waits for autosave (phase 4): 200 when the queued ops were sent and none was rejected. */
 const save = async () => {
-  const wait = page.waitForResponse((r) => r.url().includes('/fields/bulk-update'), { timeout: 15000 })
-  await saveBtn().click()
-  const res = await wait
-  await page.waitForTimeout(400)
-  return res.status()
+  const indicator = page.locator('[data-hdr=save-indicator]')
+  const state = await indicator.getAttribute('data-state')
+  if (state === 'pending' || state === 'saving') {
+    const res = await page.waitForResponse((r) => r.url().endsWith(`/forms/${form.id}/ops`), { timeout: 15000 })
+    const body = await res.json().catch(() => ({}))
+    if (body.rejected?.length) return `rejected ${JSON.stringify(body.rejected).slice(0, 200)}`
+  }
+  await page.locator('[data-hdr=save-indicator][data-state=saved]').waitFor({ timeout: 15000 })
+  await page.waitForTimeout(300)
+  return 200
 }
 const openAdvanced = async (c) => {
   const toggle = c.getByRole('button', { name: /Tùy chọn nâng cao/ })
@@ -110,17 +115,19 @@ try {
   await ruleBox.locator('label', { hasText: /^A$/ }).locator('input').check()
   await shot('member-condition', members.first())
 
-  // 4. Respondent limit by email (settings saves pending fields first).
+  // 4. Respondent limit by email (switching tab sends the pending questions; the limit autosaves once valid).
   step = '4'
+  const fieldsSave = page.waitForResponse((r) => r.url().endsWith(`/forms/${form.id}/ops`) && r.request().postData()?.includes('field.insert'), { timeout: 15000 })
   await page.locator('[data-tab=settings]').click()
+  const fres = await fieldsSave
+  check('tab switch saved pending questions', fres.status() === 200 && (await fres.json()).rejected.length === 0)
   await page.getByText('Giới Hạn Mỗi Người Trả Lời').click()
+  const settingsSave = page.waitForResponse((r) => r.url().endsWith(`/forms/${form.id}/ops`) && r.request().postData()?.includes('respondent_limit'), { timeout: 15000 })
   await page.locator('label', { hasText: 'Lấy từ một câu Email' }).locator('input').check()
-  const fieldsSave = page.waitForResponse((r) => r.url().includes('/fields/bulk-update'))
-  const settingsSave = page.waitForResponse((r) => r.url().endsWith(`/forms/${form.id}`) && r.request().method() === 'PUT' && r.request().postData()?.includes('respondent_limit'))
-  await page.getByRole('button', { name: 'Lưu Cài Đặt' }).click()
-  check('settings saved pending fields first', (await fieldsSave).status() === 200)
-  check('settings saved', (await settingsSave).status() === 200)
-  await page.waitForTimeout(800)
+  const sres = await settingsSave
+  const sbody = await sres.json()
+  check('settings autosaved', sres.status() === 200 && sbody.rejected.length === 0, JSON.stringify(sbody.rejected))
+  await save()
 
   let saved = await loadFields()
   const types = saved.map((f) => f.type).join(',')

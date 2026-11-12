@@ -115,8 +115,8 @@ try {
   await page.goto(`${APP}/forms/${form.id}/edit`)
   await page.locator('.eforms-question').first().waitFor()
   let state = await headerState(page)
-  check('DOM order', eq(state.map((s) => s.hdr), ['logo', 'title', 'status', 'save-indicator', 'presence', 'theme', 'preview', 'undo', 'redo', 'save', 'copy-link', 'share', 'publish', 'more', 'user']), state.map((s) => s.hdr))
-  check('visible order (owner desktop)', eq(visibleOrder(state), ['logo', 'title', 'status', 'save-indicator', 'theme', 'preview', 'undo', 'redo', 'save', 'copy-link', 'share', 'publish', 'more', 'user']), visibleOrder(state))
+  check('DOM order', eq(state.map((s) => s.hdr), ['logo', 'title', 'status', 'save-indicator', 'presence', 'theme', 'preview', 'undo', 'redo', 'copy-link', 'share', 'publish', 'more', 'user']), state.map((s) => s.hdr))
+  check('visible order (owner desktop)', eq(visibleOrder(state), ['logo', 'title', 'status', 'save-indicator', 'theme', 'preview', 'undo', 'redo', 'copy-link', 'share', 'publish', 'more', 'user']), visibleOrder(state))
   check('left-to-right positions', xIncreasing(state), state)
   const a11y = await page.evaluate(() => {
     const header = document.querySelector('[data-editor-header]')
@@ -126,7 +126,7 @@ try {
   check('icon buttons have aria-label', a11y.unnamed.length === 0, a11y.unnamed)
   check('no native title tooltips in header', a11y.titles === 0, `${a11y.titles}`)
   check('logo without "eForms" text', a11y.noLogoText)
-  check('undo/redo disabled placeholders', await page.locator('[data-hdr=undo]').isDisabled() && await page.locator('[data-hdr=redo]').isDisabled())
+  check('undo/redo disabled with empty history', await page.locator('[data-hdr=undo]').isDisabled() && await page.locator('[data-hdr=redo]').isDisabled())
 
   step = '1 tooltip'
   await page.locator('[data-hdr=preview]').hover()
@@ -152,7 +152,7 @@ try {
   const headerTitle = page.locator('[data-hdr=title] input')
   await headerTitle.fill('E2E tiêu đề mới')
   check('header title -> title card', (await page.locator('.eforms-title').innerText()) === 'E2E tiêu đề mới')
-  check('save indicator dirty', (await page.locator('[data-hdr=save-indicator]').getAttribute('data-state')) === 'dirty')
+  check('save indicator pending', ['pending', 'saving'].includes(await page.locator('[data-hdr=save-indicator]').getAttribute('data-state')))
   formGets = 0
   await page.locator('[data-tab=responses]').click()
   await page.waitForURL(/\/responses$/)
@@ -166,12 +166,9 @@ try {
   await page.waitForURL(/\/edit$/)
   await page.locator('.eforms-question').first().waitFor()
   check('no GET /forms/{id} while switching tabs', formGets === 0, `${formGets} requests`)
-  check('unsaved title survives tab switch', (await headerTitle.inputValue()) === 'E2E tiêu đề mới' && (await page.locator('.eforms-title').innerText()) === 'E2E tiêu đề mới')
+  check('title survives tab switch', (await headerTitle.inputValue()) === 'E2E tiêu đề mới' && (await page.locator('.eforms-title').innerText()) === 'E2E tiêu đề mới')
 
-  const put = page.waitForResponse((r) => r.url().endsWith(`/forms/${form.id}`) && r.request().method() === 'PUT')
-  await page.locator('[data-hdr=save]').click()
-  check('temporary save works', (await put).status() === 200)
-  await page.locator('[data-hdr=save-indicator][data-state=saved]').waitFor({ timeout: 5000 }).catch(() => {})
+  await page.locator('[data-hdr=save-indicator][data-state=saved]').waitFor({ timeout: 8000 }).catch(() => {})
   check('save indicator saved', (await page.locator('[data-hdr=save-indicator]').getAttribute('data-state')) === 'saved')
   check('title saved on server', (await serverForm()).title === 'E2E tiêu đề mới')
 
@@ -227,7 +224,7 @@ try {
   await page.locator('[data-hdr=theme]').click()
   await page.getByRole('heading', { name: 'Giao Diện' }).waitFor()
   await page.waitForTimeout(300)
-  check('opening theme is not a change', (await page.locator('[data-hdr=save-indicator]').getAttribute('data-state')) !== 'dirty')
+  check('opening theme is not a change', (await page.locator('[data-hdr=save-indicator]').getAttribute('data-state')) === 'saved' && (await page.locator('[data-hdr=undo]').getAttribute('aria-label')) === 'Hoàn tác')
   await page.mouse.click(200, 600)
   await page.getByRole('heading', { name: 'Giao Diện' }).waitFor({ state: 'detached', timeout: 3000 }).catch(() => {})
   check('theme panel closes', (await page.getByRole('heading', { name: 'Giao Diện' }).count()) === 0)
@@ -254,7 +251,7 @@ try {
   await mobile.goto(`${APP}/forms/${form.id}/edit`)
   await mobile.locator('.eforms-question').first().waitFor()
   state = await headerState(mobile)
-  check('mobile visible order', eq(visibleOrder(state), ['logo', 'title', 'save-indicator', 'undo', 'redo', 'save', 'publish', 'more']), visibleOrder(state))
+  check('mobile visible order', eq(visibleOrder(state), ['logo', 'title', 'save-indicator', 'undo', 'redo', 'publish', 'more']), visibleOrder(state))
   check('mobile left-to-right', xIncreasing(state), state)
   check('mobile title has room', (state.find((s) => s.hdr === 'title')?.w || 0) >= 48, state.find((s) => s.hdr === 'title'))
   const overflow = await mobile.evaluate(() => {
@@ -291,7 +288,7 @@ try {
   await vp.goto(`${APP}/forms/${form.id}/edit`)
   await vp.locator('.eforms-question').first().waitFor()
   state = await headerState(vp)
-  check('editor visible order', eq(visibleOrder(state), ['logo', 'title', 'status', 'save-indicator', 'theme', 'preview', 'undo', 'redo', 'save', 'copy-link', 'share', 'publish', 'more', 'user']), visibleOrder(state))
+  check('editor visible order', eq(visibleOrder(state), ['logo', 'title', 'status', 'save-indicator', 'theme', 'preview', 'undo', 'redo', 'copy-link', 'share', 'publish', 'more', 'user']), visibleOrder(state))
   const editorMenu = await menuItems(vp)
   check('editor ⋮ has no Xóa', eq(editorMenu.map((i) => i.text), ['Nhân bản']), editorMenu)
 } catch (e) {

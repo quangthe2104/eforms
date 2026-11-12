@@ -1,6 +1,20 @@
 import axios from 'axios'
+import { newKey } from '../utils/formStructure'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
+export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
+
+/** Stable per browser tab: lets the server skip this tab's own changes (ops log, legacy endpoints). */
+export const clientId = (() => {
+  try {
+    const saved = sessionStorage.getItem('eforms_client_id')
+    if (saved) return saved
+    const id = newKey()
+    sessionStorage.setItem('eforms_client_id', id)
+    return id
+  } catch {
+    return newKey()
+  }
+})()
 
 const api = axios.create({
   baseURL: API_URL,
@@ -19,6 +33,19 @@ const getCookie = (name) => {
     return decodeURIComponent(parts.pop().split(';').shift())
   }
   return null
+}
+
+/** Headers the axios instance adds, for raw `fetch` calls (keepalive on page unload; use credentials: 'include'). */
+export const authHeaders = () => {
+  const token = localStorage.getItem('token')
+  const xsrfToken = getCookie('XSRF-TOKEN')
+  return {
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+    'X-Client-Id': clientId,
+    ...(token && { Authorization: `Bearer ${token}` }),
+    ...(xsrfToken && { 'X-XSRF-TOKEN': xsrfToken }),
+  }
 }
 
 const publicHeaders = () => {
@@ -49,6 +76,7 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
+    config.headers['X-Client-Id'] = clientId
     
     // Add XSRF token from cookie
     const xsrfToken = getCookie('XSRF-TOKEN')
@@ -118,6 +146,7 @@ export const formAPI = {
   delete: (id) => api.delete(`/forms/${id}`),
   duplicate: (id) => api.post(`/forms/${id}/duplicate`),
   getStatistics: (id) => api.get(`/forms/${id}/statistics`),
+  ops: (id, data) => api.post(`/forms/${id}/ops`, data),
 }
 
 // Collaborator APIs

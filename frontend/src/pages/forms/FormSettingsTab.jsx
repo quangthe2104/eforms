@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Plus } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useFormStore } from '../../store/formStore'
 import { useEditor } from '../../layouts/FormEditorLayout'
 import { newKey, shortLabel } from '../../utils/formStructure'
+import { stableStringify } from '../../utils/ops'
 
 const LIMIT_METHODS = [
   { value: 'device', label: 'Mã thiết bị ẩn danh', hint: 'Lưu trong trình duyệt; người cố tình vẫn lách được bằng tab ẩn danh hoặc trình duyệt khác.' },
@@ -27,17 +28,48 @@ const DEFAULT_LIMIT = {
   message: 'Bạn đã trả lời biểu mẫu này. Xin cảm ơn!',
 }
 
-/** "Cài đặt" tab. Explicit save for now; phase 4 saves toggles at once and text/number fields after 1.5 s. */
+function limitError(limit, fields) {
+  if (!limit.enabled) return null
+  const methods = limit.methods || []
+  if (!methods.length) return 'Chọn ít nhất một căn cứ nhận diện người trả lời.'
+  for (const method of ['email', 'phone']) {
+    if (!methods.includes(method)) continue
+    const key = limit.field_keys?.[method]
+    if (!key || !fields.some((f) => f.key === key && f.type === IDENTITY_FIELDS[method].type)) {
+      return `Chọn câu hỏi ${method === 'email' ? 'Email' : 'Số điện thoại'} dùng làm căn cứ.`
+    }
+  }
+  return null
+}
+
+function normalizeLimit(limit) {
+  const methods = limit.methods || []
+  return {
+    ...limit,
+    field_keys: Object.fromEntries(Object.entries(limit.field_keys || {}).map(([m, k]) => [m, methods.includes(m) ? k : null])),
+    max_per_person: Math.max(1, parseInt(limit.max_per_person, 10) || 1),
+  }
+}
+
+const TEXT_DELAY = 1500
+const limitFrom = (form) => {
+  const saved = form?.respondent_limit && !Array.isArray(form.respondent_limit) ? form.respondent_limit : {}
+  return { ...DEFAULT_LIMIT, ...saved, field_keys: { ...DEFAULT_LIMIT.field_keys, ...(saved.field_keys || {}) } }
+}
+
+/** "Cài đặt" tab. Autosaved outside undo history: toggles at once, text/number after 1.5 s. */
 export default function FormSettingsTab() {
-  const { form, saveSettings, readOnly } = useEditor()
-  const [saving, setSaving] = useState(false)
+  const { form, updateSettings, readOnly } = useEditor()
   const fields = useFormStore((s) => s.fields)
   const insertFields = useFormStore((s) => s.insertFields)
-  const [limit, setLimit] = useState(() => {
-    const saved = form?.respondent_limit && !Array.isArray(form.respondent_limit) ? form.respondent_limit : {}
-    return { ...DEFAULT_LIMIT, ...saved, field_keys: { ...DEFAULT_LIMIT.field_keys, ...(saved.field_keys || {}) } }
-  })
-  const [settings, setSettings] = useState({
+  // The limit stays local while incomplete (e.g. Email chosen but no question yet) and is saved once valid.
+  const [limit, setLimit] = useState(() => limitFrom(form))
+  const savedLimit = form?.respondent_limit
+  useEffect(() => {
+    setLimit((prev) => (stableStringify(normalizeLimit(prev)) === stableStringify(normalizeLimit(limitFrom(form))) ? prev : limitFrom(form)))
+  }, [stableStringify(savedLimit)])
+
+  const settings = {
     is_public: form?.is_public ?? true,
     accept_responses: form?.accept_responses ?? true,
     show_progress_bar: form?.show_progress_bar ?? false,
@@ -46,13 +78,24 @@ export default function FormSettingsTab() {
     max_responses: form?.max_responses ?? 100,
     require_login: form?.require_login ?? false,
     custom_thank_you_message: form?.custom_thank_you_message ?? '',
-  })
+  }
+  const toggle = (key) => (e) => updateSettings({ [key]: e.target.checked }, { delay: 0 })
+  const setText = (patch) => updateSettings(patch, { delay: TEXT_DELAY })
 
   const methods = limit.methods || []
   const usesAccount = limit.enabled && methods.includes('account')
   const candidates = (type) => fields.filter((f) => f.type === type && !f.random_group_key)
 
-  const updateLimit = (patch) => setLimit((prev) => ({ ...prev, ...patch }))
+  const updateLimit = (patch, delay = 0) => {
+    const next = { ...limit, ...patch }
+    setLimit(next)
+    if (limitError(next, useFormStore.getState().fields)) return
+    const normalized = normalizeLimit(next)
+    updateSettings({
+      respondent_limit: normalized,
+      ...(normalized.enabled && normalized.methods.includes('account') ? { require_login: true } : {}),
+    }, { delay })
+  }
 
   const toggleMethod = (method, checked) => {
     const nextMethods = checked ? [...methods, method] : methods.filter((m) => m !== method)
@@ -70,43 +113,10 @@ export default function FormSettingsTab() {
     const at = fields[0]?.type === 'section' ? 1 : 0
     insertFields(at, [{ ...IDENTITY_FIELDS[method], key, is_required: true, placeholder: '', help_text: '' }])
     updateLimit({ field_keys: { ...limit.field_keys, [method]: key } })
-    toast.success('Đã thêm câu hỏi vào trang đầu. Biểu mẫu sẽ được lưu cùng cài đặt.')
+    toast.success('Đã thêm câu hỏi vào trang đầu.')
   }
 
-  const limitError = () => {
-    if (!limit.enabled) return null
-    if (!methods.length) return 'Chọn ít nhất một căn cứ nhận diện người trả lời.'
-    for (const method of ['email', 'phone']) {
-      if (!methods.includes(method)) continue
-      const key = limit.field_keys?.[method]
-      if (!key || !fields.some((f) => f.key === key && f.type === IDENTITY_FIELDS[method].type)) {
-        return `Chọn câu hỏi ${method === 'email' ? 'Email' : 'Số điện thoại'} dùng làm căn cứ.`
-      }
-    }
-    return null
-  }
-
-  const handleSave = async () => {
-    const error = limitError()
-    if (error) {
-      toast.error(error)
-      return
-    }
-    const fieldKeys = Object.fromEntries(
-      Object.entries(limit.field_keys || {}).map(([m, k]) => [m, methods.includes(m) ? k : null])
-    )
-    setSaving(true)
-    await saveSettings({
-      ...settings,
-      require_login: settings.require_login || usesAccount,
-      respondent_limit: {
-        ...limit,
-        field_keys: fieldKeys,
-        max_per_person: Math.max(1, parseInt(limit.max_per_person, 10) || 1),
-      },
-    })
-    setSaving(false)
-  }
+  const pendingLimitError = limitError(limit, fields)
 
   return (
     <div className="max-w-3xl mx-auto" data-settings-tab>
@@ -123,7 +133,7 @@ export default function FormSettingsTab() {
               <input
                 type="checkbox"
                 checked={settings.is_public}
-                onChange={(e) => setSettings({ ...settings, is_public: e.target.checked })}
+                onChange={toggle('is_public')}
                 className="w-5 h-5 text-primary-600 rounded"
               />
               <div>
@@ -139,7 +149,7 @@ export default function FormSettingsTab() {
               <input
                 type="checkbox"
                 checked={settings.accept_responses}
-                onChange={(e) => setSettings({ ...settings, accept_responses: e.target.checked })}
+                onChange={toggle('accept_responses')}
                 className="w-5 h-5 text-primary-600 rounded"
               />
               <div>
@@ -155,7 +165,7 @@ export default function FormSettingsTab() {
               <input
                 type="checkbox"
                 checked={settings.show_progress_bar}
-                onChange={(e) => setSettings({ ...settings, show_progress_bar: e.target.checked })}
+                onChange={toggle('show_progress_bar')}
                 className="w-5 h-5 text-primary-600 rounded"
               />
               <div>
@@ -171,7 +181,7 @@ export default function FormSettingsTab() {
               <input
                 type="checkbox"
                 checked={settings.shuffle_questions}
-                onChange={(e) => setSettings({ ...settings, shuffle_questions: e.target.checked })}
+                onChange={toggle('shuffle_questions')}
                 className="w-5 h-5 text-primary-600 rounded"
               />
               <div>
@@ -188,7 +198,7 @@ export default function FormSettingsTab() {
                 type="checkbox"
                 checked={settings.require_login || usesAccount}
                 disabled={usesAccount}
-                onChange={(e) => setSettings({ ...settings, require_login: e.target.checked })}
+                onChange={toggle('require_login')}
                 className="w-5 h-5 text-primary-600 rounded"
               />
               <div>
@@ -208,7 +218,7 @@ export default function FormSettingsTab() {
               <input
                 type="checkbox"
                 checked={settings.limit_responses}
-                onChange={(e) => setSettings({ ...settings, limit_responses: e.target.checked })}
+                onChange={toggle('limit_responses')}
                 className="w-5 h-5 text-primary-600 rounded"
               />
               <div>
@@ -222,7 +232,7 @@ export default function FormSettingsTab() {
                 <input
                   type="number"
                   value={settings.max_responses}
-                  onChange={(e) => setSettings({ ...settings, max_responses: parseInt(e.target.value) })}
+                  onChange={(e) => setText({ max_responses: Math.max(1, parseInt(e.target.value, 10) || 1) })}
                   className="input"
                   min="1"
                 />
@@ -323,7 +333,7 @@ export default function FormSettingsTab() {
                     min="1"
                     className="input w-24"
                     value={limit.max_per_person}
-                    onChange={(e) => updateLimit({ max_per_person: e.target.value })}
+                    onChange={(e) => updateLimit({ max_per_person: e.target.value }, TEXT_DELAY)}
                   />
                 </div>
 
@@ -354,7 +364,7 @@ export default function FormSettingsTab() {
                       className="input"
                       rows="2"
                       value={limit.message || ''}
-                      onChange={(e) => updateLimit({ message: e.target.value })}
+                      onChange={(e) => updateLimit({ message: e.target.value }, TEXT_DELAY)}
                       placeholder={DEFAULT_LIMIT.message}
                     />
                   </div>
@@ -368,7 +378,7 @@ export default function FormSettingsTab() {
             <label className="form-label">Thông Báo Cảm Ơn Tùy Chỉnh</label>
             <textarea
               value={settings.custom_thank_you_message}
-              onChange={(e) => setSettings({ ...settings, custom_thank_you_message: e.target.value })}
+              onChange={(e) => setText({ custom_thank_you_message: e.target.value })}
               className="input"
               rows="4"
               placeholder="Cảm ơn bạn đã gửi phản hồi!"
@@ -376,11 +386,9 @@ export default function FormSettingsTab() {
           </div>
         </fieldset>
 
-        {!readOnly && (
-          <div className="border-t border-gray-200 px-6 py-4 flex justify-end">
-            <button onClick={handleSave} disabled={saving} className="btn btn-primary disabled:opacity-60">
-              {saving ? 'Đang lưu…' : 'Lưu Cài Đặt'}
-            </button>
+        {!readOnly && pendingLimitError && (
+          <div data-limit-error className="border-t border-gray-200 px-6 py-3 text-sm text-amber-700">
+            {pendingLimitError} Giới hạn mỗi người trả lời sẽ được lưu khi chọn đủ.
           </div>
         )}
       </div>

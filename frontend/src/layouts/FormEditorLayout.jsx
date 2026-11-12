@@ -1,47 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Outlet, useLocation, useNavigate, useOutletContext, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { formAPI, fieldAPI } from '../services/api'
+import { formAPI } from '../services/api'
+import { createAutosave } from '../services/autosave'
 import { useFormStore } from '../store/formStore'
-import { destructiveChanges, shortLabel } from '../utils/formStructure'
+import { shortLabel } from '../utils/formStructure'
+import { THEME_KEYS, DEFAULT_THEME } from '../utils/ops'
 import { captureFormThumbnail } from '../utils/captureFormThumbnail'
 import EditorHeader from '../components/editor/EditorHeader'
 import ShareDialog from '../components/editor/ShareDialog'
+import DestructiveBanner from '../components/editor/DestructiveBanner'
 import FormTheme from '../components/FormTheme'
 
 /** Editor state shared by the three tabs (Câu hỏi, Câu trả lời, Cài đặt). */
 export const useEditor = () => useOutletContext()
 
-const THEME_KEYS = [
-  'primary_color', 'secondary_color', 'background_color', 'header_image',
-  'font_family', 'header_font_size', 'question_font_size', 'text_font_size',
-]
-const DEFAULT_THEME = {
-  primary_color: '#4285F4',
-  secondary_color: '#C6DAFC',
-  background_color: '#f9fafb',
-  header_image: '',
-  font_family: 'system-ui, -apple-system, sans-serif',
-  header_font_size: '32px',
-  question_font_size: '16px',
-  text_font_size: '14px',
-}
 const STATUS_TOASTS = {
   published: 'Đã xuất bản biểu mẫu',
   closed: 'Biểu mẫu đã ngừng nhận câu trả lời',
   draft: 'Đã hủy xuất bản biểu mẫu',
 }
-
-const themeStorageKey = (id) => `previewTheme_${id}`
-const readPreviewTheme = (id) => {
-  try {
-    return JSON.parse(localStorage.getItem(themeStorageKey(id)) || 'null')
-  } catch {
-    return null
-  }
-}
-// Theme columns are null on forms that never had a theme; the update API rejects null for them.
-const pickTheme = (src) => Object.fromEntries(THEME_KEYS.filter((k) => src?.[k] != null).map((k) => [k, src[k]]))
+const THUMBNAIL_EVERY_MS = 2 * 60 * 1000
+const INITIAL_SAVE_STATE = { status: 'saved', savedAt: null, paused: [], error: null, unsaved: false }
 
 const copyText = (text) => {
   if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text)
@@ -54,11 +34,21 @@ const copyText = (text) => {
   return Promise.resolve()
 }
 
-const captureThumbnail = (form, fields, meta) => {
+const isTextInput = (el) => !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))
+
+const captureThumbnail = ({ currentForm: form, fields, title, description }) => {
+  if (!form) return
+  const data = { ...Object.fromEntries(THEME_KEYS.map((k) => [k, form[k]])), title, description, fields }
   setTimeout(() => {
-    captureFormThumbnail({ ...pickTheme(form), title: meta.title, description: meta.description, fields }, form.id)
-      .catch((error) => console.error('Error capturing thumbnail:', error))
+    captureFormThumbnail(data, form.id).catch((error) => console.error('Error capturing thumbnail:', error))
   }, 500)
+}
+
+/** Field key an op/rejection points at (structure errors: "fields.<key>.<prop>"). */
+const rejectedKey = (r) => {
+  if (r.key) return r.key
+  const path = Object.keys(r.errors || {})[0] || ''
+  return path.match(/^fields\.([^.]+)\./)?.[1] || null
 }
 
 export default function FormEditorLayout() {
@@ -66,177 +56,175 @@ export default function FormEditorLayout() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const currentForm = useFormStore((s) => s.currentForm)
-  const isDirty = useFormStore((s) => s.isDirty)
-  const metaDirty = useFormStore((s) => s.metaDirty)
   const title = useFormStore((s) => s.title)
-  const { loadForm, resetForm, patchForm, setMeta, setCurrentForm, applySavedFields, markAsSaved, markMetaSaved } = useFormStore.getState()
+  const undoTop = useFormStore((s) => s.undoStack[s.undoStack.length - 1])
+  const redoTop = useFormStore((s) => s.redoStack[s.redoStack.length - 1])
+  const { loadForm, resetForm, patchForm, setMeta, setTheme, updateSettings } = useFormStore.getState()
 
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const savingRef = useRef(false)
-  const [savedAt, setSavedAt] = useState(null)
+  const [saveState, setSaveState] = useState(INITIAL_SAVE_STATE)
   const [statusBusy, setStatusBusy] = useState(false)
   const [showTheme, setShowTheme] = useState(false)
   const [showShare, setShowShare] = useState(false)
-  const [previewTheme, setPreviewTheme] = useState(() => readPreviewTheme(id))
   const [activeQuestionIndex, setActiveQuestionIndex] = useState(null)
+  const autosaveRef = useRef(null)
+  const thumbDirtyRef = useRef(false)
 
   const isEditTab = pathname.endsWith('/edit')
+  const isEditTabRef = useRef(isEditTab)
+  isEditTabRef.current = isEditTab
   const role = currentForm?.my_role || 'editor'
   const canEdit = role !== 'viewer'
-  const dirty = isDirty || metaDirty || !!previewTheme
 
+  const selectField = useCallback((key) => {
+    const index = useFormStore.getState().fields.findIndex((f) => f.key === key)
+    if (index < 0) return
+    setActiveQuestionIndex(index)
+    if (!isEditTabRef.current) navigate(`/forms/${id}/edit`)
+    setTimeout(() => document.querySelector(`[data-field-key="${key}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150)
+  }, [id])
+
+  const handleRejected = useCallback((rejected) => {
+    const fields = useFormStore.getState().fields
+    const lines = rejected.slice(0, 3).map((r) => {
+      const key = rejectedKey(r)
+      const field = key ? fields.find((f) => f.key === key) : null
+      const message = Object.values(r.errors || {})[0]?.[0] || r.message || 'Dữ liệu không hợp lệ'
+      return field ? `"${shortLabel(field, 40)}": ${message}` : message
+    })
+    toast.error(`Không thể lưu biểu mẫu:\n${lines.join('\n')}`, { id: 'save-rejected', duration: 8000 })
+    const key = rejected.map(rejectedKey).find(Boolean)
+    if (key) selectField(key)
+  }, [selectField])
+
+  // Load the form once per id; autosave lives as long as the editor.
   useEffect(() => {
     let cancelled = false
     resetForm()
     setLoading(true)
-    setSavedAt(null)
+    setSaveState(INITIAL_SAVE_STATE)
     setActiveQuestionIndex(null)
-    setPreviewTheme(readPreviewTheme(id))
+    thumbDirtyRef.current = false
+    const autosave = createAutosave({
+      formId: id,
+      onState: (s) => !cancelled && setSaveState(s),
+      onRejected: (r) => !cancelled && handleRejected(r),
+      onSaved: () => { thumbDirtyRef.current = true },
+    })
+    autosaveRef.current = autosave
     formAPI.getOne(id)
-      .then((res) => !cancelled && loadForm(res.data))
+      .then((res) => {
+        if (cancelled) return
+        loadForm(res.data)
+        autosave.reset()
+      })
       .catch(() => {
         if (cancelled) return
         toast.error('Không thể tải biểu mẫu')
         navigate('/forms', { replace: true })
       })
       .finally(() => !cancelled && setLoading(false))
-    return () => { cancelled = true }
-  }, [id])
 
-  useEffect(() => () => resetForm(), [])
+    const thumbTimer = setInterval(() => {
+      if (!thumbDirtyRef.current) return
+      thumbDirtyRef.current = false
+      captureThumbnail(useFormStore.getState())
+    }, THUMBNAIL_EVERY_MS)
+
+    return () => {
+      cancelled = true
+      clearInterval(thumbTimer)
+      // Leaving the editor: send what is left and refresh the thumbnail before the store is cleared.
+      autosave.flush()
+      if (thumbDirtyRef.current) captureThumbnail(useFormStore.getState())
+      autosave.dispose()
+      if (autosaveRef.current === autosave) autosaveRef.current = null
+      resetForm()
+    }
+  }, [id])
 
   useEffect(() => {
     if (!isEditTab) setShowTheme(false)
   }, [isEditTab])
 
-  // Temporary explicit save (phase 3). Phase 4 replaces it with the ops queue in services/autosave.js.
-  const save = useCallback(async () => {
-    const { fields: currentFields, isDirty: fieldsDirty, currentForm: latestForm, title, description } = useFormStore.getState()
-    if (!latestForm || savingRef.current) return false
-    if (!title.trim()) {
-      toast.error('Vui lòng nhập tiêu đề biểu mẫu')
-      return false
-    }
+  // Switching tab sends the queue right away.
+  useEffect(() => {
+    autosaveRef.current?.flush()
+  }, [pathname])
 
-    const responseCount = latestForm.responses?.length || 0
-    if (fieldsDirty && responseCount > 0) {
-      const changes = destructiveChanges(latestForm.fields, currentFields)
-      if (changes.length) {
-        const list = changes.slice(0, 8).map((c) => `• ${c}`).join('\n')
-        const more = changes.length > 8 ? `\n• … và ${changes.length - 8} thay đổi khác` : ''
-        const ok = confirm(
-          `Biểu mẫu đã có ${responseCount} câu trả lời. Các thay đổi sau có thể làm mất hoặc lệch dữ liệu đã thu:\n\n${list}${more}\n\nVẫn lưu?`
-        )
-        if (!ok) return false
+  // Hidden/unloaded page: send with keepalive. Block leaving only when changes cannot be sent.
+  useEffect(() => {
+    const onHide = () => autosaveRef.current?.flush({ keepalive: true })
+    const onVisibility = () => document.visibilityState === 'hidden' && onHide()
+    const onBeforeUnload = (e) => {
+      const s = autosaveRef.current?.getState()
+      if (s?.unsaved && (s.status === 'error' || s.status === 'paused')) {
+        e.preventDefault()
+        e.returnValue = ''
       }
     }
-
-    savingRef.current = true
-    setSaving(true)
-    try {
-      const pendingTheme = readPreviewTheme(id)
-      const themeData = pickTheme(pendingTheme || latestForm)
-      const meta = { title, description }
-      const response = await formAPI.update(id, { ...meta, settings: latestForm.settings || {}, ...themeData })
-      const form = { ...latestForm, ...response.data.form }
-      THEME_KEYS.forEach((k) => themeData[k] !== undefined && (form[k] = themeData[k]))
-
-      let savedFields = latestForm.fields || []
-      if (fieldsDirty) {
-        const res = await fieldAPI.bulkUpdate(id, { fields: currentFields })
-        savedFields = res.data.fields
-      }
-      const completeForm = { ...form, responses: latestForm.responses, fields: savedFields }
-
-      if (pendingTheme) {
-        localStorage.removeItem(themeStorageKey(id))
-        setPreviewTheme(null)
-      }
-      // New fields only get their database ids here; without them the next save would recreate them.
-      if (fieldsDirty) {
-        applySavedFields(completeForm, savedFields, currentFields)
-      } else {
-        setCurrentForm(completeForm)
-        markAsSaved()
-      }
-      markMetaSaved(meta)
-      setSavedAt(new Date())
-      toast.success('Đã lưu biểu mẫu thành công')
-      captureThumbnail(completeForm, savedFields, meta)
-      return true
-    } catch (error) {
-      console.error('Error saving form:', error)
-      const errors = error.response?.status === 422 ? error.response.data?.errors : null
-      if (errors) {
-        const entries = Object.entries(errors)
-        const lines = entries.slice(0, 3).map(([path, messages]) => {
-          const match = path.match(/^fields\.(\d+)\./)
-          const field = match ? currentFields[Number(match[1])] : null
-          return field ? `"${shortLabel(field, 40)}": ${messages[0]}` : messages[0]
-        })
-        toast.error(`Không thể lưu biểu mẫu:\n${lines.join('\n')}`, { duration: 8000 })
-        const first = entries[0]?.[0].match(/^fields\.(\d+)\./)
-        if (first) {
-          setActiveQuestionIndex(Number(first[1]))
-          if (!isEditTab) navigate(`/forms/${id}/edit`)
-        }
-      } else {
-        toast.error('Không thể lưu biểu mẫu')
-      }
-      return false
-    } finally {
-      savingRef.current = false
-      setSaving(false)
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('pagehide', onHide)
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('pagehide', onHide)
+      window.removeEventListener('beforeunload', onBeforeUnload)
     }
-  }, [id, isEditTab])
+  }, [])
 
+  const undo = useCallback(() => travel('undo'), [])
+  const redo = useCallback(() => travel('redo'), [])
+  function travel(direction) {
+    const result = useFormStore.getState()[direction]()
+    if (!result) return
+    if (result.conflict) {
+      const name = result.conflict.user?.name || 'người khác'
+      toast(`Không thể ${direction === 'undo' ? 'hoàn tác' : 'làm lại'} vì ${name} đã thay đổi nội dung này`, { id: 'undo-conflict' })
+      return
+    }
+    const key = result.entry.ops.find((op) => op.key)?.key
+    const index = key ? useFormStore.getState().fields.findIndex((f) => f.key === key) : -1
+    if (index >= 0) setActiveQuestionIndex(index)
+  }
+
+  // Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z outside text inputs (inside them the browser undoes the text).
   useEffect(() => {
     if (!canEdit) return
     const onKey = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || isTextInput(e.target) || isTextInput(document.activeElement)) return
+      const key = e.key.toLowerCase()
+      if (key === 'z' && !e.shiftKey) {
         e.preventDefault()
-        save()
+        undo()
+      } else if (key === 'y' || (key === 'z' && e.shiftKey)) {
+        e.preventDefault()
+        redo()
       }
     }
+    // Typing steps end when the input loses focus.
+    const onFocusOut = (e) => isTextInput(e.target) && useFormStore.getState().breakCoalesce()
     document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [canEdit, save])
-
-  const saveSettings = useCallback(async (settings) => {
-    // The respondent limit may point at questions that exist only in the builder so far.
-    if (useFormStore.getState().isDirty && !(await save())) return false
-    try {
-      const response = await formAPI.update(id, settings)
-      const saved = response.data.form || {}
-      patchForm({
-        ...settings,
-        require_login: saved.require_login ?? settings.require_login,
-        respondent_limit: saved.respondent_limit ?? settings.respondent_limit,
-      })
-      toast.success('Đã lưu cài đặt biểu mẫu')
-      return true
-    } catch {
-      toast.error('Không thể lưu cài đặt')
-      return false
+    document.addEventListener('focusout', onFocusOut)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('focusout', onFocusOut)
     }
-  }, [id, save])
+  }, [canEdit, undo, redo])
 
   const changeStatus = useCallback(async (status) => {
-    const { currentForm: latest, isDirty: fieldsDirty, metaDirty: titleDirty } = useFormStore.getState()
+    const latest = useFormStore.getState().currentForm
     if (!latest) return false
     const publishing = status === 'published' && latest.status === 'draft'
-    if (publishing && (fieldsDirty || titleDirty || readPreviewTheme(id)) && !(await save())) return false
+    if (publishing) await autosaveRef.current?.flush()
     setStatusBusy(true)
     try {
       const response = await formAPI.update(id, { status })
       const saved = response.data.form || {}
       patchForm({ status: saved.status ?? status, slug: saved.slug ?? latest.slug })
+      if (saved.revision != null) useFormStore.getState().advanceRevision(saved.revision)
       toast.success(latest.status === 'closed' && status === 'published' ? 'Biểu mẫu đã nhận câu trả lời trở lại' : STATUS_TOASTS[status])
-      if (publishing) {
-        const { title, description, currentForm: form } = useFormStore.getState()
-        captureThumbnail(form, form.fields || [], { title, description })
-      }
+      if (publishing) captureThumbnail(useFormStore.getState())
       return true
     } catch {
       toast.error('Không thể cập nhật trạng thái biểu mẫu')
@@ -244,7 +232,7 @@ export default function FormEditorLayout() {
     } finally {
       setStatusBusy(false)
     }
-  }, [id, save])
+  }, [id])
 
   const copyLink = useCallback(() => {
     const form = useFormStore.getState().currentForm
@@ -272,29 +260,38 @@ export default function FormEditorLayout() {
   }, [canEdit, changeStatus])
 
   const openPreview = useCallback(() => {
-    window.open(`/forms/${id}/preview`, '_blank')
-    if (dirty) toast('Bản xem trước hiển thị nội dung đã lưu gần nhất', { id: 'preview-dirty' })
-  }, [id, dirty])
+    const url = `/forms/${id}/preview`
+    const autosave = autosaveRef.current
+    if (!autosave?.hasUnsaved()) {
+      window.open(url, '_blank')
+      return
+    }
+    // Open synchronously (popup blockers), point it at the preview once the queue is saved.
+    const win = window.open('about:blank', '_blank')
+    autosave.flush().finally(() => {
+      if (win) win.location.href = url
+      else window.open(url, '_blank')
+      if (autosave.getState().paused.length) toast('Bản xem trước chưa có các thay đổi đang tạm dừng', { id: 'preview-dirty' })
+    })
+  }, [id])
 
   const openTheme = useCallback(() => {
     if (!isEditTab) navigate(`/forms/${id}/edit`)
     setShowTheme(true)
   }, [id, isEditTab])
 
-  const handlePreviewTheme = useCallback((next) => {
-    // FormTheme reports its initial values on open; that alone is not a change.
+  const handleThemeChange = useCallback((next) => {
+    // FormTheme reports its initial values on open; only real differences are changes.
     const saved = useFormStore.getState().currentForm
-    if (THEME_KEYS.every((k) => (next?.[k] || DEFAULT_THEME[k]) === (saved?.[k] || DEFAULT_THEME[k]))) {
-      setPreviewTheme(null)
-      localStorage.removeItem(themeStorageKey(id))
-      return
-    }
-    setPreviewTheme(next)
-    localStorage.setItem(themeStorageKey(id), JSON.stringify(next))
-  }, [id])
+    const patch = Object.fromEntries(THEME_KEYS
+      .filter((k) => next?.[k] !== undefined && (next[k] || DEFAULT_THEME[k]) !== (saved?.[k] || DEFAULT_THEME[k]))
+      .map((k) => [k, next[k]]))
+    if (Object.keys(patch).length) setTheme(patch)
+  }, [])
 
   const duplicate = useCallback(async () => {
     try {
+      await autosaveRef.current?.flush()
       const response = await formAPI.duplicate(id)
       toast.success('Đã nhân bản biểu mẫu')
       navigate(`/forms/${response.data.form.id}/edit`)
@@ -306,6 +303,7 @@ export default function FormEditorLayout() {
   const remove = useCallback(async () => {
     if (!confirm('Bạn có chắc chắn muốn xóa biểu mẫu này?')) return
     try {
+      autosaveRef.current?.dispose()
       await formAPI.delete(id)
       toast.success('Đã xóa biểu mẫu')
       navigate('/forms')
@@ -314,14 +312,18 @@ export default function FormEditorLayout() {
     }
   }, [id])
 
+  const blocked = saveState.unsaved && (saveState.status === 'error' || saveState.status === 'paused')
   const goHome = useCallback((e) => {
-    if (canEdit && dirty && !confirm('Có thay đổi chưa lưu. Vẫn rời trang?')) e.preventDefault()
-  }, [canEdit, dirty])
+    if (canEdit && blocked && !confirm('Có thay đổi chưa lưu được. Vẫn rời trang?')) e.preventDefault()
+  }, [canEdit, blocked])
 
-  const theme = useMemo(() => {
-    const src = previewTheme || currentForm
-    return Object.fromEntries(THEME_KEYS.map((k) => [k, src?.[k] || DEFAULT_THEME[k]]))
-  }, [previewTheme, currentForm])
+  const theme = useMemo(
+    () => Object.fromEntries(THEME_KEYS.map((k) => [k, currentForm?.[k] || DEFAULT_THEME[k]])),
+    [currentForm],
+  )
+
+  const pausedChanges = saveState.paused.flatMap((p) => p.changes)
+  const responseCount = currentForm?.responses?.length || 0
 
   const editor = {
     id,
@@ -335,11 +337,17 @@ export default function FormEditorLayout() {
     theme,
     showTheme,
     openTheme,
-    save,
-    saveSettings,
-    saving,
-    savedAt,
-    dirty,
+    saveState,
+    retrySave: () => autosaveRef.current?.retry(),
+    flushSave: () => autosaveRef.current?.flush(),
+    /** Settings tab: toggles save at once (`delay: 0`), text/number after 1.5 s. Not in undo history. */
+    updateSettings,
+    /** Phase 5 entry point for ops from other users (see autosave.applyRemote). */
+    applyRemoteOps: (ops, meta) => autosaveRef.current?.applyRemote(ops, meta),
+    undo,
+    redo,
+    undoLabel: undoTop?.label || null,
+    redoLabel: redoTop?.label || null,
     changeStatus,
     statusBusy,
     copyLink,
@@ -351,12 +359,20 @@ export default function FormEditorLayout() {
     presence: [],
     activeQuestionIndex,
     setActiveQuestionIndex,
-    responseCount: currentForm?.responses?.length || 0,
+    responseCount,
   }
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: theme.background_color }}>
       <EditorHeader editor={editor} />
+      {canEdit && pausedChanges.length > 0 && (
+        <DestructiveBanner
+          count={responseCount}
+          changes={pausedChanges}
+          onApprove={() => autosaveRef.current?.approvePaused()}
+          onRevert={() => autosaveRef.current?.revertPaused()}
+        />
+      )}
 
       {loading || !currentForm ? (
         <div className="flex items-center justify-center h-[60vh]">
@@ -371,7 +387,7 @@ export default function FormEditorLayout() {
       )}
 
       {showTheme && canEdit && (
-        <FormTheme theme={theme} onClose={() => setShowTheme(false)} onPreview={handlePreviewTheme} />
+        <FormTheme theme={theme} onClose={() => setShowTheme(false)} onPreview={handleThemeChange} />
       )}
       {showShare && (
         <ShareDialog formId={id} onClose={() => setShowShare(false)} onCopyLink={copyLink} />

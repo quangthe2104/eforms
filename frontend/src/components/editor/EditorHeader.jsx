@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
-import { FileText, Palette, Eye, Undo2, Redo2, Save, Link2, UserPlus, MoreVertical, Copy, Trash2 } from 'lucide-react'
+import { FileText, Palette, Eye, Undo2, Redo2, Link2, UserPlus, MoreVertical, Copy, Trash2 } from 'lucide-react'
 import Tooltip from './Tooltip'
 import HeaderIconButton from './HeaderIconButton'
 import StatusBadge from './StatusBadge'
@@ -85,7 +85,7 @@ const TABS = [
 
 export default function EditorHeader({ editor }) {
   const {
-    id, form, canEdit, isOwner, title, setTitle, saving, dirty, savedAt, save, changeStatus, statusBusy,
+    id, form, canEdit, isOwner, title, setTitle, saveState, retrySave, undo, redo, undoLabel, redoLabel, changeStatus, statusBusy,
     copyLink, openTheme, openPreview, openShare, duplicate, remove, goHome, responseCount,
   } = editor
   const accountActions = useAccountActions()
@@ -115,7 +115,7 @@ export default function EditorHeader({ editor }) {
           <HeaderTitle value={title} onChange={setTitle} readOnly={!canEdit} />
           <StatusBadge status={form?.status} className="hidden md:inline-flex" />
           {canEdit ? (
-            <SaveIndicator saving={saving} dirty={dirty} savedAt={savedAt} />
+            <SaveIndicator state={saveState} onRetry={retrySave} />
           ) : (
             <span data-hdr="readonly" className="px-2 py-0.5 rounded border border-gray-300 text-xs font-medium text-gray-600 whitespace-nowrap">
               Chỉ xem
@@ -129,9 +129,8 @@ export default function EditorHeader({ editor }) {
         <HeaderIconButton hdr="preview" icon={Eye} label="Xem trước" wrapperClassName={DESKTOP_ONLY} onClick={openPreview} />
         {canEdit && (
           <>
-            <HeaderIconButton hdr="undo" icon={Undo2} label="Hoàn tác" disabled />
-            <HeaderIconButton hdr="redo" icon={Redo2} label="Làm lại" disabled />
-            <HeaderIconButton hdr="save" icon={Save} label="Lưu" tooltip={saving ? 'Đang lưu…' : 'Lưu (Ctrl+S)'} disabled={saving} onClick={save} />
+            <HeaderIconButton hdr="undo" icon={Undo2} label="Hoàn tác" tooltip={undoLabel ? `Hoàn tác: ${undoLabel}` : 'Hoàn tác'} disabled={!undoLabel} onClick={undo} />
+            <HeaderIconButton hdr="redo" icon={Redo2} label="Làm lại" tooltip={redoLabel ? `Làm lại: ${redoLabel}` : 'Làm lại'} disabled={!redoLabel} onClick={redo} />
           </>
         )}
         <HeaderIconButton hdr="copy-link" icon={Link2} label="Sao chép đường liên kết của người trả lời" tooltip="Sao chép liên kết người trả lời" wrapperClassName={DESKTOP_ONLY} onClick={copyLink} />
