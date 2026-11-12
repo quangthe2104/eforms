@@ -6,6 +6,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\FormController;
 use App\Http\Controllers\FormFieldController;
 use App\Http\Controllers\FormResponseController;
+use App\Http\Controllers\FormSyncController;
 use App\Http\Controllers\ExportController;
 use App\Http\Controllers\FormCollaboratorController;
 use App\Http\Controllers\InvitationController;
@@ -52,6 +53,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/forms/{form}/fields/{field}', [FormFieldController::class, 'destroy']);
     Route::post('/forms/{form}/fields/reorder', [FormFieldController::class, 'reorder']);
     Route::post('/forms/{form}/fields/bulk-update', [FormFieldController::class, 'bulkUpdate']);
+
+    // Autosave + live sync
+    Route::post('/forms/{form}/ops', [FormSyncController::class, 'ops']);
+    Route::get('/forms/{form}/changes', [FormSyncController::class, 'changes']);
 
     // Form response routes
     Route::get('/forms/{form}/responses', [FormResponseController::class, 'index']);

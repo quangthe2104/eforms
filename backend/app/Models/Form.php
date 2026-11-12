@@ -50,6 +50,7 @@ class Form extends Model
         'require_login' => 'boolean',
         'max_responses' => 'integer',
         'respondent_limit' => 'array',
+        'revision' => 'integer',
     ];
 
     protected static function boot()

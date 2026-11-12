@@ -4,7 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Form;
 use App\Services\Forms\ConditionEvaluator;
-use App\Services\Forms\RespondentLimiter;
+use App\Services\Forms\EditorRules;
+use App\Services\Forms\FormChangeLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -98,49 +99,19 @@ class FormController extends Controller
     {
         $this->authorize('update', $form);
 
-        $request->validate([
-            'title' => 'sometimes|string|max:255',
-            'description' => 'nullable|string',
-            'status' => 'sometimes|in:draft,published,closed',
-            'settings' => 'nullable|array',
-            'is_public' => 'sometimes|boolean',
-            'accept_responses' => 'sometimes|boolean',
-            'show_progress_bar' => 'sometimes|boolean',
-            'shuffle_questions' => 'sometimes|boolean',
-            'limit_responses' => 'sometimes|boolean',
-            'max_responses' => 'nullable|integer|min:1',
-            'require_login' => 'sometimes|boolean',
-            'custom_thank_you_message' => 'nullable|string',
-            'thumbnail' => 'nullable|string', // Base64 image data
-            'primary_color' => 'nullable|string|max:255',
-            'secondary_color' => 'nullable|string|max:255',
-            'background_color' => 'nullable|string|max:255',
-            'header_image' => 'nullable|string', // Base64 image data
-            'font_family' => 'nullable|string|max:255',
-            'header_font_size' => 'nullable|string|max:255',
-            'question_font_size' => 'nullable|string|max:255',
-            'text_font_size' => 'nullable|string|max:255',
-            'respondent_limit' => 'nullable|array',
-            'respondent_limit.enabled' => 'sometimes|boolean',
-            'respondent_limit.methods' => 'sometimes|array',
-            'respondent_limit.methods.*' => 'in:' . implode(',', RespondentLimiter::METHODS),
-            'respondent_limit.field_keys' => 'sometimes|array',
-            'respondent_limit.field_keys.email' => 'nullable|string|max:64',
-            'respondent_limit.field_keys.phone' => 'nullable|string|max:64',
-            'respondent_limit.match' => 'sometimes|in:any,all',
-            'respondent_limit.max_per_person' => 'sometimes|integer|min:1|max:1000',
-            'respondent_limit.on_limit' => 'sometimes|in:block,edit',
-            'respondent_limit.message' => 'nullable|string|max:2000',
-        ]);
+        $request->validate(EditorRules::form());
 
-        $data = $request->all();
-        $limit = $data['respondent_limit'] ?? null;
-        if (!empty($limit['enabled']) && in_array('account', $limit['methods'] ?? [], true)) {
-            $data['require_login'] = true;
-        }
+        $data = EditorRules::enforceFormInvariants($request->all());
 
-        $form->update($data);
-        
+        DB::transaction(function () use ($form, $data, $request) {
+            $form->update($data);
+            $changed = array_values(array_intersect(array_keys($form->getChanges()), EditorRules::FORM_PROPS));
+            if ($changed !== []) {
+                $op = ['type' => 'form.update', 'set' => $form->only($changed)];
+                FormChangeLog::record($form, $request->user()->id, $request->header('X-Client-Id'), [$op]);
+            }
+        });
+
         // Force refresh from database, not cache
         $form = Form::find($form->id);
 
@@ -179,6 +150,7 @@ class FormController extends Controller
             $newForm->title = $form->title . ' (Copy)';
             $newForm->slug = null; // Will be auto-generated
             $newForm->status = 'draft';
+            $newForm->revision = 0;
 
             $keyMap = [];
             foreach ($form->fields as $field) {

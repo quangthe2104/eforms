@@ -4,11 +4,16 @@ namespace App\Http\Controllers;
 
 use App\Models\Form;
 use App\Models\FormField;
+use App\Services\Forms\EditorRules;
 use App\Services\Forms\FieldReferenceValidator;
+use App\Services\Forms\FormChangeLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
+/**
+ * Classic field endpoints. Each change makes other open editors reload the form (`form.reload`).
+ */
 class FormFieldController extends Controller
 {
     /**
@@ -18,19 +23,10 @@ class FormFieldController extends Controller
     {
         $this->authorize('update', $form);
 
-        $request->validate([
-            'type' => 'required|string',
+        $request->validate(array_merge(EditorRules::field(), [
+            'type' => 'required|string|max:255',
             'label' => 'required|string|max:255',
-            'placeholder' => 'nullable|string',
-            'help_text' => 'nullable|string',
-            'options' => 'nullable|array',
-            'rows' => 'nullable|array',
-            'columns' => 'nullable|array',
-            'validation_rules' => 'nullable|array',
-            'is_required' => 'boolean',
-            'order' => 'integer',
-            'conditional_logic' => 'nullable|array',
-        ]);
+        ]));
 
         $field = FormField::create([
             'form_id' => $form->id,
@@ -46,6 +42,7 @@ class FormFieldController extends Controller
             'order' => $request->order ?? 0,
             'conditional_logic' => $request->conditional_logic,
         ]);
+        FormChangeLog::recordReload($form, $request->user()->id, $request->header('X-Client-Id'));
 
         return response()->json([
             'message' => 'Field created successfully',
@@ -64,21 +61,12 @@ class FormFieldController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $request->validate([
-            'type' => 'sometimes|string',
+        $request->validate(array_merge(EditorRules::field(), [
             'label' => 'sometimes|string|max:255',
-            'placeholder' => 'nullable|string',
-            'help_text' => 'nullable|string',
-            'options' => 'nullable|array',
-            'rows' => 'nullable|array',
-            'columns' => 'nullable|array',
-            'validation_rules' => 'nullable|array',
-            'is_required' => 'boolean',
-            'order' => 'integer',
-            'conditional_logic' => 'nullable|array',
-        ]);
+        ]));
 
         $field->update($request->all());
+        FormChangeLog::recordReload($form, $request->user()->id, $request->header('X-Client-Id'));
 
         return response()->json([
             'message' => 'Field updated successfully',
@@ -98,6 +86,7 @@ class FormFieldController extends Controller
         }
 
         $field->delete();
+        FormChangeLog::recordReload($form, $request->user()->id, $request->header('X-Client-Id'));
 
         return response()->json([
             'message' => 'Field deleted successfully',
@@ -122,6 +111,7 @@ class FormFieldController extends Controller
                 ->where('form_id', $form->id)
                 ->update(['order' => $fieldData['order']]);
         }
+        FormChangeLog::recordReload($form, $request->user()->id, $request->header('X-Client-Id'));
 
         return response()->json([
             'message' => 'Fields reordered successfully',
@@ -135,14 +125,10 @@ class FormFieldController extends Controller
     {
         $this->authorize('update', $form);
 
-        $request->validate([
-            'fields' => 'present|array',
-            'fields.*.key' => 'nullable|string|max:64',
-            'fields.*.settings' => 'nullable|array',
-            'fields.*.conditional_logic' => 'nullable|array',
-            'fields.*.random_group_key' => 'nullable|string|max:64',
-            'fields.*.variant_key' => 'nullable|string|max:64',
-        ]);
+        $request->validate(array_merge(
+            ['fields' => 'present|array'],
+            EditorRules::prefixed(EditorRules::field(), 'fields.*.')
+        ));
 
         $existing = FormField::where('form_id', $form->id)->get()->keyBy('id');
         $fields = [];
@@ -155,6 +141,9 @@ class FormFieldController extends Controller
             if (empty($fieldData['key'])) {
                 $fieldData['key'] = $current->key ?? (string) Str::uuid();
             }
+            if (array_key_exists('label', $fieldData) && $fieldData['label'] === null) {
+                $fieldData['label'] = '';
+            }
             $fields[] = $fieldData;
         }
 
@@ -166,7 +155,7 @@ class FormFieldController extends Controller
             ], 422);
         }
 
-        DB::transaction(function () use ($form, $fields, $existing) {
+        DB::transaction(function () use ($form, $fields, $existing, $request) {
             $keptIds = array_filter(array_column($fields, 'id'));
             FormField::where('form_id', $form->id)->whereNotIn('id', $keptIds)->delete();
 
@@ -184,6 +173,8 @@ class FormFieldController extends Controller
                     FormField::create(array_merge($fieldData, ['form_id' => $form->id]));
                 }
             }
+
+            FormChangeLog::record($form, $request->user()->id, $request->header('X-Client-Id'), [FormChangeLog::RELOAD]);
         });
 
         return response()->json([
@@ -192,4 +183,3 @@ class FormFieldController extends Controller
         ]);
     }
 }
-

@@ -11,7 +11,7 @@ File này là nguồn duy nhất về phạm vi, quyết định và tiến đ�
 |---|---|---|
 | 0 | Thảo luận, chốt thiết kế | Đã chốt (12/11/2026) |
 | 1 | Backend: vai trò cộng tác viên, kiểm tra quyền tập trung, lời mời, tìm người dùng | Xong (12/11/2026) |
-| 2 | Backend: lưu theo thao tác, số phiên bản, nhật ký thay đổi, hiện diện | Chưa làm |
+| 2 | Backend: lưu theo thao tác, số phiên bản, nhật ký thay đổi, hiện diện | Xong (12/11/2026) |
 | 3 | Frontend: layout trang sửa mới (header + 3 tab), bỏ phần header form khỏi `MainLayout` | Chưa làm |
 | 4 | Frontend: lưu tự động, chỉ báo lưu, cảnh báo thay đổi phá dữ liệu, hoàn tác/làm lại | Chưa làm |
 | 5 | Frontend: đồng bộ trực tiếp (polling) + hiện diện | Chưa làm |
@@ -213,6 +213,8 @@ Từ trái sang phải:
 - `forms.revision` (unsigned bigint, mặc định 0): tăng sau mỗi lô thao tác.
 - `form_changes`: id (bigint tự tăng), form_id, revision, user_id, client_id(64), ops json, created_at, index(form_id, revision). Tự dọn bản ghi cũ hơn 24 giờ bằng lệnh schedule.
 - `form_presence`: form_id, user_id, client_id, active_field_key (nullable), last_seen_at, primary(form_id, client_id). Có thể chuyển sang cache sau.
+- Đã làm (Giai đoạn 2, migration `2026_11_13_000001`): `form_changes` có unique(form_id, revision) + index(created_at), `client_id` nullable (thao tác từ API cũ không có client). Lệnh `forms:prune-changes {--hours=24}` chạy **mỗi giờ**: xóa `form_changes` cũ hơn 24 giờ và `form_presence` cũ hơn 1 giờ.
+- Migration `2026_11_13_000002` (chỉ MySQL): MySQL local mặc định MyISAM nên `form_collaborators`/`form_invitations` của Giai đoạn 1 được tạo không có transaction/khóa ngoại → chuyển sang InnoDB và thêm khóa ngoại. Bảng mới khai báo `engine('InnoDB')`.
 
 ### 5.2 Kiểm tra quyền tập trung
 
@@ -259,6 +261,23 @@ Từ trái sang phải:
 - Nhân bản: bản sao thuộc về người nhân bản (`user_id` = người đó, vai trò owner).
 - Tạo form (mọi đường, kể cả nhân bản/import) tự thêm dòng `owner` cho `forms.user_id` (sự kiện `created` của model).
 
+**Đã làm ở Giai đoạn 2 – dạng dữ liệu cho frontend:**
+
+- Mọi JSON form (show/store/update/duplicate/index) có `revision` (số nguyên). Client lấy làm mốc `since` đầu tiên. Bản nhân bản bắt đầu từ 0.
+- `POST /forms/{form}/ops` (quyền `update`, Người xem 403) body `{client_id (≤64), base_revision? (chỉ để tham khảo, không dùng để chặn xung đột), ops[1..500]}` → luôn 200:
+  `{revision, applied:[{index, op}], rejected:[{index, type, key?, reason, message, errors?}]}`.
+  - `op` trong `applied` là thao tác **đã chuẩn hóa như đã áp** (vd. `after_key` thực tế, `label` null → `""`, `require_login:true` bị ép thêm, `data.id` của câu mới). Đây cũng là nội dung ghi vào `form_changes` và gửi cho người khác.
+  - `revision` tăng 1 nếu lô có ≥1 thao tác được áp (một dòng `form_changes`); không áp được gì thì giữ nguyên, không ghi log.
+  - `reason`: `invalid` (sai dạng/không qua kiểm tra; `errors` dạng `{"set.label":[…]}` / `{"data.type":[…]}`), `unknown_type`, `deleted` (không còn câu có `key` này – đã bị xóa hoặc chưa từng có; áp cho update/move/delete), `exists` (insert trùng `key`), `structure` (kiểm tra tham chiếu cuối lô; `errors` dạng `{"fields.<key>.<thuộc tính>":[…]}` để chọn câu lỗi).
+- `GET /forms/{form}/changes?since=&client_id=&active_field=` (quyền `view`, Người xem cũng poll được) → `{revision, changes:[{revision, user:{id,name}|null, client_id, ops}], presence:[{user_id, name, client_id, active_field_key}], reset}`.
+  - Ghi nhận hiện diện (upsert theo form_id + client_id). `presence` bỏ client hiện tại và các dòng quá 30 giây; sắp theo tên. Cùng người mở 2 tab = 2 dòng (frontend tự gộp theo `user_id`).
+  - `changes` bỏ các lô của chính `client_id`, tăng dần theo `revision`.
+  - `reset:true` (khi đó `changes:[]`) nếu: `since > revision`; `revision - since > 200`; nhật ký đã bị dọn (thiếu revision trong khoảng); hoặc có lô của người khác chứa `form.reload`. Khi `reset`: tải lại `GET /forms/{id}`, lấy `revision` mới, áp lại hàng đợi chưa gửi.
+- API cũ vẫn chạy và báo cho trình sửa đang mở (header tùy chọn `X-Client-Id` để bỏ qua chính mình):
+  - `PUT /forms/{form}`: nếu có cột thay đổi (trừ `thumbnail`) → tăng revision + ghi `form.update {set: các cột đã đổi}` (không bắt tải lại).
+  - `fields` store/update/destroy/reorder/bulk-update → tăng revision + ghi `{type:"form.reload"}`.
+- Quy tắc kiểm tra dùng chung: `App\Services\Forms\EditorRules` (dùng bởi `FormController@update`, `FormFieldController`, ops). Thay đổi nhỏ so với trước: các cột giao diện NOT NULL (`primary_color`… `text_font_size`) gửi `null` → 422 thay vì lỗi 500; `label` null được lưu là `""`; bulk-update giờ kiểm tra cả kiểu từng thuộc tính câu hỏi.
+
 ### 5.4 Thao tác (ops)
 
 Định danh câu hỏi bằng `key`.
@@ -275,6 +294,22 @@ Quy tắc:
 - Một thao tác lỗi thì trả trong `rejected` kèm lý do, các thao tác khác vẫn được áp.
 - Câu hỏi đã bị xóa mà vẫn nhận `field.update`: bỏ qua và báo lại cho client.
 - Các thao tác trên phần ngẫu nhiên (khối nhiều câu) được biểu diễn bằng nhiều thao tác cơ bản trong cùng một lô.
+
+**Đã làm ở Giai đoạn 2 – dạng chính xác (`App\Services\Forms\FormOpsApplier`):**
+
+- `field.insert {key (≤64), after_key: string|null, data}`: `data` chỉ lấy các thuộc tính sửa được (bỏ qua `id`, `order`, `form_id`… nếu có), `type` bắt buộc. `after_key: null` = đầu danh sách; `after_key` không còn tồn tại → thêm vào **cuối** (op chuẩn hóa ghi `after_key` thực tế). Op chuẩn hóa có `data` đầy đủ mọi thuộc tính + `data.id`.
+- `field.update {key, set}`: chỉ ghi các thuộc tính có trong `set`. Thuộc tính sửa được: `type, label, description, image_url, video_url, placeholder, help_text, options, rows, columns, validation_rules, is_required, conditional_logic, settings, random_group_key, variant_key`. `key`, `order`, `id` → `invalid` (đổi vị trí dùng `field.move`).
+- **Mức "từng thuộc tính":**
+  - Cột thường: cả giá trị (văn bản ghi đè cả ô).
+  - `settings` và `validation_rules` (object JSON): gửi `"settings.<tên>": giá trị` để chỉ đổi một mục cấp 1 (vd. `settings.other_option`, `settings.min_select`, `settings.piped_from`); giá trị `null` = xóa mục đó. Chỉ một cấp (`settings.filter` là một mục, gửi cả object `filter`). Gửi `settings: {...}` = thay cả object. Trong cùng `set`, thuộc tính nguyên được áp trước rồi mới tới `settings.<tên>`.
+  - `options`, `rows`, `columns` (mảng chuỗi, không có id riêng): **thay cả mảng**. Lệch so với mục 4.7 "từng lựa chọn": hai người cùng lúc sửa hai lựa chọn khác nhau của cùng một câu thì người lưu sau thắng cả danh sách. Muốn gộp từng lựa chọn cần thêm id cho lựa chọn (đổi dữ liệu câu trả lời) – để sau nếu cần.
+  - `conditional_logic`: cả object.
+- `field.delete {key}`; `field.move {key, after_key: string|null}` (cùng quy tắc `after_key` như insert, `after_key == key` → `invalid`). Server đánh lại `order` = 0..n-1 sau mỗi lô.
+- `form.update {set}`: `title, description, status`, giao diện (`primary_color, secondary_color, background_color, header_image, font_family, header_font_size, question_font_size, text_font_size`), cài đặt (`is_public, accept_responses, show_progress_bar, shuffle_questions, limit_responses, max_responses, require_login, custom_thank_you_message, respondent_limit, settings`). `settings.<tên>` và `respondent_limit.<tên>` đổi một mục như trên. Nếu sau khi gộp `respondent_limit` bật với phương thức `account` thì server ép `require_login:true` (có trong op chuẩn hóa). Không nhận `thumbnail` (dùng endpoint riêng).
+- **Kiểm tra cấu trúc (điều kiện, câu nguồn, bộ lọc, khối ngẫu nhiên) chạy một lần ở cuối lô** bằng `FieldReferenceValidator`, nên trạng thái trung gian trong lô được phép sai. Chỉ tính lỗi **mới** so với trước lô (form cũ đã sai sẵn vẫn sửa nội dung được). Nếu có lỗi mới: loại dần các thao tác có thể gây lỗi (insert/delete/move và update có `type, conditional_logic, settings*, random_group_key, variant_key`), hẹp trước: thao tác trên câu bị lỗi → trên câu mà câu lỗi tham chiếu (vd. xóa câu đang được điều kiện dùng) → mọi thao tác cấu trúc; rồi áp lại lô. Các thao tác bị loại có `reason:"structure"`. Thao tác chỉ đổi nội dung (nhãn, lựa chọn…) không bao giờ bị loại vì lỗi cấu trúc.
+- **Phần ngẫu nhiên dưới dạng thao tác cơ bản (cùng một lô):** tạo khối = `field.insert` câu tiêu đề `random_section` (settings variants/mode/pick_count) + `field.insert`/`field.update {random_group_key}` + `field.move` cho từng câu thành viên, đứng liền sau tiêu đề. Xóa khối = `field.delete` tiêu đề + mọi thành viên. Đổi phiên bản/chế độ = `field.update` tiêu đề (`settings.variants`, `settings.mode`…) + `field.update {variant_key}` các thành viên. Gửi thiếu (vd. chỉ thêm thành viên) → `structure`.
+- Server không chặn thay đổi phá dữ liệu (form đã có câu trả lời); việc tạm dừng/cảnh báo là của frontend (mục 4.6).
+- Các lô được tuần tự hóa bằng khóa dòng `forms` (`SELECT … FOR UPDATE`) nên "ai đến sau" = lô commit sau.
 
 ### 5.5 Frontend: cấu trúc mới
 
@@ -317,3 +352,7 @@ Quy tắc:
 - **Dữ liệu cũ:** migration gán Chủ sở hữu cho mọi form hiện có. Cần sao lưu DB trước khi chạy trên production. (Local đã chạy 12/11/2026, bản sao lưu ở `backend/storage/app/backup-before-phase1.sql`.)
 - **Tìm người dùng:** mọi người dùng đăng nhập đều tìm được tên/email người khác (≥3 ký tự, 8 kết quả, có throttle). Nếu cần kín hơn thì bắt buộc `form_id` hoặc chỉ khớp email đầy đủ.
 - **Gửi email:** gửi đồng bộ trong request; lỗi SMTP chỉ ghi log và trả `email_sent:false`. Nếu SMTP chậm thì chuyển sang queue.
+- **Lựa chọn của câu hỏi gộp theo cả danh sách** (Giai đoạn 2): `options/rows/columns` là mảng chuỗi không id, nên ai lưu sau thắng cả danh sách thay vì từng lựa chọn như mục 4.7. Frontend nên gửi `options` ngay khi mất focus ô lựa chọn để thu hẹp cửa sổ xung đột.
+- **Lịch chạy:** cần cron `php artisan schedule:run` mỗi phút trên server để `forms:prune-changes` (mỗi giờ) chạy. Không có cron thì nhật ký chỉ lớn dần, không sai chức năng.
+- **MySQL mặc định MyISAM** trên WAMP local: các migration sau này nên khai báo `$table->engine('InnoDB')` (hoặc đặt engine mặc định của server là InnoDB). Production cần kiểm tra `@@default_storage_engine`. Local đã chạy migration Giai đoạn 2 ngày 12/11/2026, bản sao lưu `backend/storage/app/backup-before-phase2.sql`.
+- **`respondent_limit.field_keys`** không được kiểm tra khi câu hỏi bị xóa (giống trước đây).
