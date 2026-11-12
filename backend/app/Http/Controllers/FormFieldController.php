@@ -16,10 +16,7 @@ class FormFieldController extends Controller
      */
     public function store(Request $request, Form $form)
     {
-        // Check ownership
-        if ($form->user_id !== $request->user()->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
+        $this->authorize('update', $form);
 
         $request->validate([
             'type' => 'required|string',
@@ -61,8 +58,9 @@ class FormFieldController extends Controller
      */
     public function update(Request $request, Form $form, FormField $field)
     {
-        // Check ownership
-        if ($form->user_id !== $request->user()->id || $field->form_id !== $form->id) {
+        $this->authorize('update', $form);
+
+        if ($field->form_id !== $form->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -93,8 +91,9 @@ class FormFieldController extends Controller
      */
     public function destroy(Request $request, Form $form, FormField $field)
     {
-        // Check ownership
-        if ($form->user_id !== $request->user()->id || $field->form_id !== $form->id) {
+        $this->authorize('update', $form);
+
+        if ($field->form_id !== $form->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -110,10 +109,7 @@ class FormFieldController extends Controller
      */
     public function reorder(Request $request, Form $form)
     {
-        // Check ownership
-        if ($form->user_id !== $request->user()->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
+        $this->authorize('update', $form);
 
         $request->validate([
             'fields' => 'required|array',
@@ -137,10 +133,7 @@ class FormFieldController extends Controller
      */
     public function bulkUpdate(Request $request, Form $form)
     {
-        // Check ownership
-        if ($form->user_id !== $request->user()->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
+        $this->authorize('update', $form);
 
         $request->validate([
             'fields' => 'present|array',

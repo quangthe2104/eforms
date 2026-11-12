@@ -21,6 +21,8 @@ use Illuminate\Support\Facades\Storage;
  */
 class PublicFormController extends Controller
 {
+    public const CLOSED_MESSAGE = 'Biểu mẫu không còn nhận câu trả lời.';
+
     public function __construct(
         private VariantAssigner $assigner,
         private SubmissionValidator $validator,
@@ -33,12 +35,25 @@ class PublicFormController extends Controller
      */
     public function show(Request $request, string $slug)
     {
-        $form = Form::with('fields')
-            ->where('slug', $slug)
-            ->where('status', 'published')
+        $form = Form::where('slug', $slug)
+            ->whereIn('status', ['published', 'closed'])
             ->where('is_public', true)
             ->firstOrFail();
 
+        // Closed: title/theme only (no questions) so the page can show the message in the form's look.
+        if ($form->status === 'closed') {
+            $data = $form->toArray();
+            $data['fields'] = [];
+            $data['respondent_limit'] = null;
+            $data['accepting'] = false;
+            $data['closed'] = true;
+            $data['message'] = self::CLOSED_MESSAGE;
+            $data['limit_status'] = null;
+
+            return response()->json($data);
+        }
+
+        $form->load('fields');
         $deviceId = DeviceId::fromRequest($request) ?? DeviceId::issue();
 
         $data = $form->toArray();
@@ -60,7 +75,7 @@ class PublicFormController extends Controller
     {
         $form = Form::where('slug', $slug)->firstOrFail();
         if (!$form->canAcceptResponses()) {
-            return response()->json(['message' => 'Biểu mẫu này hiện không nhận câu trả lời.'], 403);
+            return $this->notAccepting($form);
         }
 
         $request->validate([
@@ -145,7 +160,7 @@ class PublicFormController extends Controller
         $form = Form::where('slug', $slug)->firstOrFail();
 
         if (!$form->canAcceptResponses()) {
-            return response()->json(['message' => 'Biểu mẫu này hiện không nhận câu trả lời.'], 403);
+            return $this->notAccepting($form);
         }
 
         $user = $this->user($request);
@@ -262,6 +277,15 @@ class PublicFormController extends Controller
             'response_id' => $outcome['response']->id,
             'edited' => $outcome['edited'],
         ], 201);
+    }
+
+    private function notAccepting(Form $form): JsonResponse
+    {
+        if ($form->status === 'closed') {
+            return response()->json(['message' => self::CLOSED_MESSAGE, 'closed' => true], 403);
+        }
+
+        return response()->json(['message' => 'Biểu mẫu này hiện không nhận câu trả lời.'], 403);
     }
 
     private function user(Request $request)

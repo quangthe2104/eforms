@@ -14,10 +14,7 @@ class ExportController extends Controller
      */
     public function exportResponses(Request $request, Form $form)
     {
-        // Check ownership
-        if ($form->user_id !== $request->user()->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
+        $this->authorize('view', $form);
 
         $fileName = 'form-' . $form->slug . '-responses-' . now()->format('Y-m-d') . '.xlsx';
 
@@ -29,10 +26,7 @@ class ExportController extends Controller
      */
     public function exportSingleResponse(Request $request, Form $form, $responseId)
     {
-        // Check ownership
-        if ($form->user_id !== $request->user()->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
+        $this->authorize('view', $form);
 
         $response = $form->responses()->findOrFail($responseId);
 

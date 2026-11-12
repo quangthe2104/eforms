@@ -15,10 +15,7 @@ class FormResponseController extends Controller
      */
     public function index(Request $request, Form $form)
     {
-        // Check ownership
-        if ($form->user_id !== $request->user()->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
+        $this->authorize('view', $form);
 
         $responses = FormResponse::with(['answers.field', 'user'])
             ->where('form_id', $form->id)
@@ -35,8 +32,9 @@ class FormResponseController extends Controller
      */
     public function show(Request $request, Form $form, FormResponse $response)
     {
-        // Check ownership
-        if ($form->user_id !== $request->user()->id || $response->form_id !== $form->id) {
+        $this->authorize('view', $form);
+
+        if ($response->form_id !== $form->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -53,8 +51,9 @@ class FormResponseController extends Controller
      */
     public function destroy(Request $request, Form $form, FormResponse $response)
     {
-        // Check ownership
-        if ($form->user_id !== $request->user()->id || $response->form_id !== $form->id) {
+        $this->authorize('manageResponses', $form);
+
+        if ($response->form_id !== $form->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -77,10 +76,7 @@ class FormResponseController extends Controller
      */
     public function summary(Request $request, Form $form)
     {
-        // Check ownership
-        if ($form->user_id !== $request->user()->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
+        $this->authorize('view', $form);
 
         $filter = array_filter(
             (array) $request->query('variants', []),

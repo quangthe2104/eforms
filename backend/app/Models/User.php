@@ -53,6 +53,16 @@ class User extends Authenticatable
     }
 
     /**
+     * Every form the user can access through form_collaborators (own and shared), with pivot `role`.
+     */
+    public function sharedForms()
+    {
+        return $this->belongsToMany(Form::class, 'form_collaborators')
+            ->withPivot(['role', 'added_by'])
+            ->withTimestamps();
+    }
+
+    /**
      * Check if user is admin
      */
     public function isAdmin(): bool

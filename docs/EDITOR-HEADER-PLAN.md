@@ -10,7 +10,7 @@ File này là nguồn duy nhất về phạm vi, quyết định và tiến đ�
 | Giai đoạn | Nội dung | Trạng thái |
 |---|---|---|
 | 0 | Thảo luận, chốt thiết kế | Đã chốt (12/11/2026) |
-| 1 | Backend: vai trò cộng tác viên, kiểm tra quyền tập trung, lời mời, tìm người dùng | Chưa làm |
+| 1 | Backend: vai trò cộng tác viên, kiểm tra quyền tập trung, lời mời, tìm người dùng | Xong (12/11/2026) |
 | 2 | Backend: lưu theo thao tác, số phiên bản, nhật ký thay đổi, hiện diện | Chưa làm |
 | 3 | Frontend: layout trang sửa mới (header + 3 tab), bỏ phần header form khỏi `MainLayout` | Chưa làm |
 | 4 | Frontend: lưu tự động, chỉ báo lưu, cảnh báo thay đổi phá dữ liệu, hoàn tác/làm lại | Chưa làm |
@@ -240,6 +240,25 @@ Từ trái sang phải:
 
 - `bulk-update` cũ được giữ cho các luồng khác (nhân bản…), trang sửa không dùng nữa.
 
+**Đã làm ở Giai đoạn 1 – quyết định và dạng dữ liệu cho frontend:**
+
+- `my_role`: `"owner" | "editor" | "viewer"` (có trong show/store/update/duplicate của form và mỗi phần tử của `GET /forms`).
+- `GET /forms?filter=all|mine|shared`: "Của tôi" = tôi là Chủ sở hữu; "Được chia sẻ" = tôi là Người chỉnh sửa/Người xem. Mỗi form thêm `my_role`, `owner {id,name,email}` (người tạo nếu còn là chủ, nếu không thì chủ đầu tiên), `collaborators_count` (>1 thì hiện biểu tượng chia sẻ).
+- `GET /forms/{form}/collaborators` → `{my_role, collaborators: [{id,name,email,role,is_me}] (chủ → chỉnh sửa → xem, theo tên), invitations: [{id,email,role,message,expires_at,expired,invited_by{id,name},created_at}], mail_enabled}`. Người xem nhận `invitations: []` (không lộ email người được mời).
+- `POST /forms/{form}/collaborators` `{user_id | email, role, notify? (mặc định true), message?}` → 201:
+  - Tài khoản đã có: `{type:"collaborator", collaborator:{...}, email_sent, mail_enabled}`; đã có quyền rồi thì 422.
+  - Email chưa có tài khoản: `{type:"invitation", invitation:{...}, invite_url, email_sent, mail_enabled}`. Mời lại cùng email thì thay lời mời đang chờ (link cũ hết hiệu lực).
+  - `email_sent:false` + `mail_enabled:false` → popup hiện "Chưa cấu hình email – hãy sao chép link mời để gửi".
+- **Sao chép link mời của lời mời đang chờ:** DB chỉ lưu bản băm nên không lấy lại được link cũ. Thêm `POST /forms/{form}/invitations/{invitation}/link`: sinh token mới, gia hạn 7 ngày, trả `invite_url` (link cũ hết hiệu lực). `.../resend` làm như vậy và gửi email nếu có SMTP. Cả hai trả `{invitation, invite_url, email_sent, mail_enabled}`.
+- `PATCH`/`DELETE /forms/{form}/collaborators/{user}`: gỡ/hạ Chủ sở hữu cuối cùng → 422 `errors.role`. Tự rời: `DELETE` chính mình (mọi vai trò, trừ chủ cuối cùng).
+- `GET /invitations/{token}` → `{email, role, expires_at, form{id,title}, inviter{name}, has_account}`. Lỗi: 404 `reason:"invalid"`, 410 `reason:"expired"|"used"`. `POST /invitations/{token}/accept` → `{form_id, role}`; sai email → 403 `{reason:"wrong_email", email}`. Đã có quyền thì giữ vai trò cao hơn.
+- `POST /register` + `invite_token`: email phải khớp (422 `errors.email`), token hỏng/hết hạn → 422 `errors.invite_token`; thành công trả thêm `form_id`, `form_role`.
+- `GET /users/search?q=&form_id=` → `{users:[{id,name,email}]}`; `q` < 3 ký tự → 422; tối đa 8; luôn loại chính mình, có `form_id` thì loại người đã có quyền (cần quyền `share`); throttle 60/phút.
+- Form công khai `closed`: `GET /forms/public/{slug}` trả 200 với `closed:true, accepting:false, message:"Biểu mẫu không còn nhận câu trả lời.", fields:[]` (giữ tiêu đề/giao diện); `submit`/`assign` trả 403 `{message, closed:true}`. Bản nháp vẫn 404.
+- Không có quyền → 403 (`This action is unauthorized.`), thay cho `Unauthorized` cũ.
+- Nhân bản: bản sao thuộc về người nhân bản (`user_id` = người đó, vai trò owner).
+- Tạo form (mọi đường, kể cả nhân bản/import) tự thêm dòng `owner` cho `forms.user_id` (sự kiện `created` của model).
+
 ### 5.4 Thao tác (ops)
 
 Định danh câu hỏi bằng `key`.
@@ -295,4 +314,6 @@ Quy tắc:
 - **Sửa form đã xuất bản:** mặc định thay đổi có hiệu lực ngay với người trả lời (giống hiện tại). Nếu muốn kiểu "bản nháp riêng, bấm Xuất bản lại mới áp dụng" thì đó là phạm vi riêng, lớn hơn.
 - **Đồng bộ bằng polling:** độ trễ khoảng 2–3 giây, và mỗi người đang mở form gửi một request mỗi 2,5 giây. Ổn với quy mô hiện tại. Khi cần tức thời hoặc nhiều người cùng lúc thì chuyển sang Reverb.
 - **Cùng sửa một ô văn bản:** ai lưu sau thắng ở mức cả ô, không gộp từng ký tự như Google Docs.
-- **Dữ liệu cũ:** migration gán Chủ sở hữu cho mọi form hiện có. Cần sao lưu DB trước khi chạy trên production.
+- **Dữ liệu cũ:** migration gán Chủ sở hữu cho mọi form hiện có. Cần sao lưu DB trước khi chạy trên production. (Local đã chạy 12/11/2026, bản sao lưu ở `backend/storage/app/backup-before-phase1.sql`.)
+- **Tìm người dùng:** mọi người dùng đăng nhập đều tìm được tên/email người khác (≥3 ký tự, 8 kết quả, có throttle). Nếu cần kín hơn thì bắt buộc `form_id` hoặc chỉ khớp email đầy đủ.
+- **Gửi email:** gửi đồng bộ trong request; lỗi SMTP chỉ ghi log và trả `email_sent:false`. Nếu SMTP chậm thì chuyển sang queue.

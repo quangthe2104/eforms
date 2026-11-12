@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\FormInvitation;
 use App\Models\User;
+use App\Services\Forms\FormSharing;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -11,15 +13,32 @@ use Illuminate\Validation\ValidationException;
 class AuthController extends Controller
 {
     /**
-     * Register a new user
+     * Register a new user; with `invite_token` the email must match the invitation,
+     * which is accepted right away (`form_id` is returned).
      */
-    public function register(Request $request)
+    public function register(Request $request, FormSharing $sharing)
     {
         $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8|confirmed',
+            'invite_token' => 'nullable|string|max:255',
         ]);
+
+        $invitation = null;
+        if ($request->filled('invite_token')) {
+            $invitation = FormInvitation::findByToken($request->invite_token);
+            if (!$invitation || !$invitation->form || $invitation->state() !== 'ok') {
+                throw ValidationException::withMessages([
+                    'invite_token' => ['Lời mời không hợp lệ hoặc đã hết hạn. Hãy nhờ người mời gửi lại lời mời.'],
+                ]);
+            }
+            if (mb_strtolower(trim($request->email)) !== mb_strtolower($invitation->email)) {
+                throw ValidationException::withMessages([
+                    'email' => ["Email phải trùng với email được mời ({$invitation->email})."],
+                ]);
+            }
+        }
 
         $user = User::create([
             'name' => $request->name,
@@ -30,11 +49,19 @@ class AuthController extends Controller
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
-        return response()->json([
+        $data = [
             'message' => 'User registered successfully',
             'user' => $user,
             'token' => $token,
-        ], 201);
+        ];
+
+        if ($invitation) {
+            $role = $sharing->accept($invitation, $user);
+            $data['form_id'] = $role !== null ? $invitation->form_id : null;
+            $data['form_role'] = $role;
+        }
+
+        return response()->json($data, 201);
     }
 
     /**

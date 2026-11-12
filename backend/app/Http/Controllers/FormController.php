@@ -12,12 +12,20 @@ use Illuminate\Support\Str;
 class FormController extends Controller
 {
     /**
-     * Display a listing of the user's forms
+     * Display the user's own and shared forms; `filter` = all | mine (owner) | shared (editor/viewer).
      */
     public function index(Request $request)
     {
-        $query = Form::with(['fields', 'responses'])
-            ->where('user_id', $request->user()->id);
+        $user = $request->user();
+        $roles = match ($request->query('filter')) {
+            'mine' => [Form::ROLE_OWNER],
+            'shared' => [Form::ROLE_EDITOR, Form::ROLE_VIEWER],
+            default => Form::ROLES,
+        };
+
+        $query = Form::with(['fields', 'responses', 'collaborators:id,name,email'])
+            ->withCount('collaboratorRecords as collaborators_count')
+            ->whereHas('collaboratorRecords', fn ($q) => $q->where('user_id', $user->id)->whereIn('role', $roles));
 
         // Filter by status
         if ($request->has('status')) {
@@ -33,6 +41,15 @@ class FormController extends Controller
         }
 
         $forms = $query->latest()->paginate(15);
+
+        $forms->getCollection()->each(function (Form $form) use ($user) {
+            $owners = $form->collaborators->where('pivot.role', Form::ROLE_OWNER);
+            $owner = $owners->firstWhere('id', $form->user_id) ?? $owners->first();
+
+            $form->setAttribute('my_role', $form->collaborators->firstWhere('id', $user->id)?->pivot->role);
+            $form->setAttribute('owner', $owner ? $owner->only(['id', 'name', 'email']) : null);
+            $form->unsetRelation('collaborators');
+        });
 
         return response()->json($forms);
     }
@@ -58,7 +75,7 @@ class FormController extends Controller
 
         return response()->json([
             'message' => 'Form created successfully',
-            'form' => $form,
+            'form' => $form->withRoleOf($request->user()),
         ], 201);
     }
 
@@ -67,14 +84,11 @@ class FormController extends Controller
      */
     public function show(Request $request, Form $form)
     {
-        // Check ownership
-        if ($form->user_id !== $request->user()->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
+        $this->authorize('view', $form);
 
         $form->load(['fields', 'responses.answers']);
 
-        return response()->json($form);
+        return response()->json($form->withRoleOf($request->user()));
     }
 
     /**
@@ -82,10 +96,7 @@ class FormController extends Controller
      */
     public function update(Request $request, Form $form)
     {
-        // Check ownership
-        if ($form->user_id !== $request->user()->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
+        $this->authorize('update', $form);
 
         $request->validate([
             'title' => 'sometimes|string|max:255',
@@ -135,7 +146,7 @@ class FormController extends Controller
 
         return response()->json([
             'message' => 'Form updated successfully',
-            'form' => $form,
+            'form' => $form->withRoleOf($request->user()),
         ]);
     }
 
@@ -144,10 +155,7 @@ class FormController extends Controller
      */
     public function destroy(Request $request, Form $form)
     {
-        // Check ownership
-        if ($form->user_id !== $request->user()->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
+        $this->authorize('delete', $form);
 
         $form->delete();
 
@@ -161,15 +169,13 @@ class FormController extends Controller
      */
     public function duplicate(Request $request, Form $form)
     {
-        // Check ownership
-        if ($form->user_id !== $request->user()->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
+        $this->authorize('view', $form);
 
         DB::beginTransaction();
         try {
-            // Create new form
+            // Create new form; the copy belongs to whoever duplicates it
             $newForm = $form->replicate();
+            $newForm->user_id = $request->user()->id;
             $newForm->title = $form->title . ' (Copy)';
             $newForm->slug = null; // Will be auto-generated
             $newForm->status = 'draft';
@@ -220,7 +226,7 @@ class FormController extends Controller
 
             return response()->json([
                 'message' => 'Form duplicated successfully',
-                'form' => $newForm->load('fields'),
+                'form' => $newForm->load('fields')->withRoleOf($request->user()),
             ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -236,10 +242,7 @@ class FormController extends Controller
      */
     public function statistics(Request $request, Form $form)
     {
-        // Check ownership
-        if ($form->user_id !== $request->user()->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
+        $this->authorize('view', $form);
 
         $stats = [
             'total_responses' => $form->responses()->count(),

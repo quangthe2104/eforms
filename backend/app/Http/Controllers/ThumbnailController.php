@@ -15,10 +15,7 @@ class ThumbnailController extends Controller
      */
     public function upload(Request $request, Form $form)
     {
-        // Check ownership
-        if ($form->user_id !== $request->user()->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
+        $this->authorize('update', $form);
 
         $request->validate([
             'thumbnail' => 'required|string', // Base64 image data

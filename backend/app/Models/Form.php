@@ -61,14 +61,87 @@ class Form extends Model
                 $form->slug = Str::slug($form->title) . '-' . Str::random(8);
             }
         });
+
+        // The creator becomes the first owner; permissions come only from form_collaborators.
+        static::created(function ($form) {
+            if ($form->user_id) {
+                FormCollaborator::firstOrCreate(
+                    ['form_id' => $form->id, 'user_id' => $form->user_id],
+                    ['role' => self::ROLE_OWNER]
+                );
+            }
+        });
     }
 
+    public const ROLE_OWNER = 'owner';
+    public const ROLE_EDITOR = 'editor';
+    public const ROLE_VIEWER = 'viewer';
+    public const ROLES = [self::ROLE_OWNER, self::ROLE_EDITOR, self::ROLE_VIEWER];
+
+    /** @var array<int, string|null> */
+    private array $roleCache = [];
+
     /**
-     * Get the user that owns the form.
+     * The user who created the form (kept for compatibility; access is decided by collaborators).
      */
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function collaborators()
+    {
+        return $this->belongsToMany(User::class, 'form_collaborators')
+            ->withPivot(['role', 'added_by'])
+            ->withTimestamps();
+    }
+
+    public function collaboratorRecords()
+    {
+        return $this->hasMany(FormCollaborator::class);
+    }
+
+    public function invitations()
+    {
+        return $this->hasMany(FormInvitation::class);
+    }
+
+    /**
+     * 'owner', 'editor', 'viewer' or null when the user has no access.
+     */
+    public function roleFor(?User $user): ?string
+    {
+        if (!$user) {
+            return null;
+        }
+
+        if (!array_key_exists($user->id, $this->roleCache)) {
+            $this->roleCache[$user->id] = $this->collaboratorRecords()
+                ->where('user_id', $user->id)
+                ->value('role');
+        }
+
+        return $this->roleCache[$user->id];
+    }
+
+    public function forgetRoles(): void
+    {
+        $this->roleCache = [];
+    }
+
+    public function ownerCount(): int
+    {
+        return $this->collaboratorRecords()->where('role', self::ROLE_OWNER)->count();
+    }
+
+    /**
+     * Adds `my_role` to the JSON so the frontend can hide or lock actions.
+     */
+    public function withRoleOf(?User $user): static
+    {
+        $this->setAttribute('my_role', $this->roleFor($user));
+
+        return $this;
     }
 
     /**
