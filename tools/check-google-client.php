@@ -35,7 +35,7 @@ if ($frontendSecret !== null) echo "PROBLEM  VITE_GOOGLE_CLIENT_SECRET is in fro
 if ($backendSecret !== null) echo "NOTE     GOOGLE_CLIENT_SECRET is set in backend/.env; this flow does not need it\n";
 
 $id = reset($ids);
-foreach (['http://localhost:5173', 'http://eforms.test:5173'] as $origin) {
+foreach (array_slice($argv, 1) ?: ['http://localhost:5173', 'http://eforms.test:5173'] as $origin) {
     $url = 'https://accounts.google.com/o/oauth2/v2/auth?' . http_build_query([
         'client_id' => $id,
         'redirect_uri' => 'storagerelay://' . str_replace('://', '/', $origin) . '?id=auth1',
