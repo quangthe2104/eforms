@@ -47,7 +47,7 @@ step "maintenance off"
 php artisan up >>"$LOG" 2>&1
 
 step "health"
-for u in https://ksxh.vn/ https://ksxh.vn/api/user https://ksxh.vn/sanctum/csrf-cookie; do
+for u in https://ksxh.vn/ https://ksxh.vn/api/me https://ksxh.vn/sanctum/csrf-cookie; do
   echo "$(curl -s -o /dev/null -w '%{http_code}' "$u") $u"
 done
 echo "log: $LOG"

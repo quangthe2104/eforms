@@ -2,7 +2,7 @@
 # Run on the cPanel host: post-release smoke checks for https://ksxh.vn.
 cd ~/public_html/backend
 php artisan route:list --path=api 2>&1 | grep -E 'auth|me|user' | head -8
-for u in https://ksxh.vn/api/auth/me https://ksxh.vn/api/me https://ksxh.vn/api/forms https://ksxh.vn/login; do
+for u in https://ksxh.vn/api/me https://ksxh.vn/api/forms https://ksxh.vn/login; do
   echo "$(curl -s -o /dev/null -w '%{http_code}' -H 'Accept: application/json' "$u") $u"
 done
 echo "--- today's log errors"
