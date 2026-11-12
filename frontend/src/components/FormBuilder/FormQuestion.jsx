@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { memo, useState, useRef, useEffect } from 'react'
 import { GripVertical, Copy, Trash2, MoreVertical, Image, Type, AlignLeft, Mail, Hash, Phone, Link2, Calendar, ChevronDown, Circle, CheckSquare, Upload, Star, Grid3x3, Menu } from 'lucide-react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -77,9 +77,20 @@ const getFieldTypeIcon = (type) => {
   return Circle // Default icon
 }
 
-export default function FormQuestion({ field, index, isActive, onClick, theme }) {
-  const { updateField, duplicateField, setFields } = useFormStore()
+// Module constant so the option/grid DndContext value stays stable between renders.
+const POINTER_OPTIONS = { activationConstraint: { distance: 5 } }
+
+// Memoized: typing in one card must not re-render the others (props are kept stable by FormBuilder).
+export default memo(FormQuestion)
+
+function FormQuestion({ field, index, isActive, onSelect, theme }) {
+  const { updateField, duplicateField, setFields } = useFormStore.getState()
   const [editData, setEditData] = useState({ ...field })
+  const [syncedField, setSyncedField] = useState(field)
+  if (field !== syncedField) {
+    setSyncedField(field)
+    setEditData({ ...field })
+  }
   const [showTypeDropdown, setShowTypeDropdown] = useState(false)
   const [editingQuestion, setEditingQuestion] = useState(false)
   const [editingOptionIndex, setEditingOptionIndex] = useState(null)
@@ -103,10 +114,6 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
     transition,
     opacity: isDragging ? 0.5 : 1,
   }
-
-  useEffect(() => {
-    setEditData({ ...field })
-  }, [field])
 
   // Deselecting unmounts the inputs before they blur, so edit mode has to be reset here.
   useEffect(() => {
@@ -359,18 +366,10 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
 
   const needsOptions = ['dropdown', 'radio', 'checkbox'].includes(editData.type)
   const isGrid = editData.type === 'multiple_choice_grid' || editData.type === 'checkbox_grid'
-  const pipedSource = settings.piped_from
-    ? useFormStore.getState().fields.find((f) => f.key === settings.piped_from)
-    : null
+  const pipedSource = useFormStore((s) => (settings.piped_from ? s.fields.find((f) => f.key === settings.piped_from) : null))
 
   // Drag & Drop sensors for grid rows/columns
-  const gridSensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 5,
-      },
-    })
-  )
+  const gridSensors = useSensors(useSensor(PointerSensor, POINTER_OPTIONS))
 
   const handleRowDragEnd = (event) => {
     const { active, over } = event
@@ -423,7 +422,7 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
       <div
         ref={setNodeRef}
         style={style}
-        onClick={onClick}
+        onClick={() => onSelect(index)}
         className={`eforms-question ${isActive ? 'active' : ''}`}
       >
       {/* Question Header */}
@@ -444,7 +443,6 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
                 className="eforms-question-input"
                 placeholder="Câu hỏi"
                 style={{
-                  color: theme?.primary_color,
                   fontSize: theme?.question_font_size,
                 }}
               />
@@ -460,7 +458,6 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
                 }
               }}
               style={{
-                color: theme?.primary_color,
                 fontSize: theme?.question_font_size,
               }}
             >

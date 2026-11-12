@@ -131,7 +131,7 @@
 }
 
 .eforms-title {
-  @apply text-3xl font-normal text-gray-900 mb-2 cursor-text py-1;
+  @apply text-3xl font-bold text-gray-900 mb-2 cursor-text py-1;
   border-bottom: 2px solid transparent;
   transition: border-color 0.2s ease-in-out;
   position: relative;
@@ -163,7 +163,7 @@
 }
 
 .eforms-title-input {
-  @apply w-full text-3xl font-normal text-gray-900 outline-none bg-transparent py-1;
+  @apply w-full text-3xl font-bold text-gray-900 outline-none bg-transparent py-1;
   border: none;
   border-bottom: 2px solid #d1d5db;
   transition: none;
@@ -178,7 +178,7 @@
 }
 
 .eforms-description {
-  @apply text-sm text-gray-600 cursor-text py-1 min-h-[24px];
+  @apply text-sm text-gray-800 cursor-text py-1 min-h-[24px];
   border-bottom: 2px solid transparent;
   transition: border-color 0.2s ease-in-out;
   position: relative;
@@ -189,7 +189,7 @@
 }
 
 .eforms-description-input {
-  @apply w-full text-sm text-gray-600 outline-none bg-transparent py-1 resize-none;
+  @apply w-full text-sm text-gray-800 outline-none bg-transparent py-1 resize-none;
   border: none;
   border-bottom: 2px solid #d1d5db;
   transition: none;

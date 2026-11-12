@@ -56,14 +56,14 @@ export function FormFrame({ form, showDescription, children }) {
             ></div>
             <div className="eforms-header-content">
               <h1
-                className="text-3xl font-normal mb-2"
-                style={{ fontSize: form.header_font_size || '32px', color: form.primary_color || '#111827', fontFamily: form.font_family || 'inherit' }}
+                className="text-3xl font-bold text-gray-900 mb-2"
+                style={{ fontSize: form.header_font_size || '32px', fontFamily: form.font_family || 'inherit' }}
               >
                 {form.title}
               </h1>
               {form.description && showDescription && (
                 <div
-                  className="text-gray-700"
+                  className="text-gray-800"
                   style={{ fontSize: form.text_font_size || '14px', fontFamily: form.font_family || 'inherit' }}
                   dangerouslySetInnerHTML={{ __html: form.description }}
                 />

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Eye } from 'lucide-react'
 import { useFormStore } from '../../store/formStore'
 import { useEditor } from '../../layouts/FormEditorLayout'
@@ -13,6 +13,9 @@ import {
   moveField, insertionPoint, isHiddenInBuilder, currentVariant, isDifferentMode, findHeader,
   blockEnd,
 } from '../../utils/formStructure'
+
+// Module constant: a new options object per render would change the DndContext value and re-render every card.
+const POINTER_OPTIONS = { activationConstraint: { distance: 8 } }
 
 /** Border + name label in the color of the other people who have this question selected. */
 function PresenceFrame({ users, children }) {
@@ -44,19 +47,16 @@ function PresenceFrame({ users, children }) {
 
 /** "Câu hỏi" tab. Form data, saving and the theme live in FormEditorLayout. */
 export default function FormBuilder() {
-  const { currentForm, fields, reorderFields, insertFields, title, description, setMeta } = useFormStore()
+  const fields = useFormStore((s) => s.fields)
+  const title = useFormStore((s) => s.title)
+  const description = useFormStore((s) => s.description)
+  const hasResponses = useFormStore((s) => (s.currentForm?.responses?.length || 0) > 0)
+  const { reorderFields, insertFields, setMeta } = useFormStore.getState()
   const { theme: currentTheme, showTheme, readOnly, activeQuestionIndex, setActiveQuestionIndex, presenceByField } = useEditor()
   const [activeTabs, setActiveTabs] = useState({})
-  const hasResponses = (currentForm?.responses?.length || 0) > 0
   const isActiveAt = (index) => !readOnly && activeQuestionIndex === index
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    })
-  )
+  const sensors = useSensors(useSensor(PointerSensor, POINTER_OPTIONS))
 
   // Click outside handler
   useEffect(() => {
@@ -147,7 +147,9 @@ export default function FormBuilder() {
     focusNewField(at, useFormStore.getState().fields[at]?.key)
   }
 
-  const visibleKeys = fields.filter((f) => !isHiddenInBuilder(f, fields, activeTabs)).map((f) => f.key)
+  // A new items array re-renders every sortable card, so it only changes when the keys do.
+  const visibleKeyList = fields.filter((f) => !isHiddenInBuilder(f, fields, activeTabs)).map((f) => f.key).join('\n')
+  const visibleKeys = useMemo(() => (visibleKeyList ? visibleKeyList.split('\n') : []), [visibleKeyList])
 
   const handleTitleChange = (data) => {
     if (data.title !== title || data.description !== description) {
@@ -235,7 +237,7 @@ export default function FormBuilder() {
                           field={field}
                           index={index}
                           isActive={isActiveAt(index)}
-                          onClick={() => setActiveQuestionIndex(index)}
+                          onSelect={setActiveQuestionIndex}
                           theme={currentTheme}
                         />
                       )

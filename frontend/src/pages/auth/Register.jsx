@@ -91,7 +91,7 @@ export default function Register() {
               aria-describedby={emailLocked ? 'register-email-locked' : undefined}
               data-invite-email={emailLocked || undefined}
               className={`input pl-10 ${emailLocked ? 'bg-gray-50 text-gray-600 cursor-not-allowed' : ''}`}
-              placeholder="email@cua-ban.com"
+              placeholder="Nhập email của bạn"
               required
             />
             {emailLocked && <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />}

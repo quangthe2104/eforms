@@ -50,8 +50,8 @@ export default function FormEditorLayout() {
   const { pathname } = useLocation()
   const currentForm = useFormStore((s) => s.currentForm)
   const title = useFormStore((s) => s.title)
-  const undoTop = useFormStore((s) => s.undoStack[s.undoStack.length - 1])
-  const redoTop = useFormStore((s) => s.redoStack[s.redoStack.length - 1])
+  const undoLabel = useFormStore((s) => s.undoStack[s.undoStack.length - 1]?.label || null)
+  const redoLabel = useFormStore((s) => s.redoStack[s.redoStack.length - 1]?.label || null)
   const { loadForm, resetForm, patchForm, setMeta, setTheme, updateSettings } = useFormStore.getState()
 
   const [loading, setLoading] = useState(true)
@@ -67,8 +67,7 @@ export default function FormEditorLayout() {
   const syncRef = useRef(null)
   const thumbDirtyRef = useRef(false)
   const activeKeyRef = useRef(null)
-  const fields = useFormStore((s) => s.fields)
-  const activeIndex = activeKey ? fields.findIndex((f) => f.key === activeKey) : -1
+  const activeIndex = useFormStore((s) => (activeKey ? s.fields.findIndex((f) => f.key === activeKey) : -1))
   const activeQuestionIndex = activeIndex >= 0 ? activeIndex : null
   activeKeyRef.current = activeQuestionIndex != null ? activeKey : null
   const setActiveQuestionIndex = useCallback((index) => {
@@ -399,8 +398,8 @@ export default function FormEditorLayout() {
     applyRemoteOps: (ops, meta) => autosaveRef.current?.applyRemote(ops, meta),
     undo,
     redo,
-    undoLabel: undoTop?.label || null,
-    redoLabel: redoTop?.label || null,
+    undoLabel,
+    redoLabel,
     changeStatus,
     statusBusy,
     copyLink,

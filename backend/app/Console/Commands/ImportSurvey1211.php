@@ -155,7 +155,7 @@ class ImportSurvey1211 extends Command
             // Page 1 – Phần I
             $this->q('email', 'email', 'Email của Ông/Bà (chỉ dùng để tránh trả lời trùng)', [
                 'is_required' => true,
-                'placeholder' => 'ten@vidu.com',
+                'placeholder' => 'Nhập email của bạn',
             ]),
             [
                 'key' => $this->key('part1'),

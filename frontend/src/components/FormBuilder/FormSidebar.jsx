@@ -1,6 +1,5 @@
-import { Plus, Image, Video, SeparatorHorizontal, Palette, Shuffle } from 'lucide-react'
+import { Plus, Image, Video, SeparatorHorizontal, Shuffle } from 'lucide-react'
 import { useFormStore } from '../../store/formStore'
-import { useEditor } from '../../layouts/FormEditorLayout'
 import { newKey, newVariantKey } from '../../utils/formStructure'
 import Tooltip from '../editor/Tooltip'
 
@@ -15,10 +14,8 @@ function SidebarButton({ label, onClick, className = '', children }) {
 }
 
 export default function FormSidebar({ onInsert }) {
-  const { fields } = useFormStore()
-  const { openTheme } = useEditor()
-
   const handleAddQuestion = () => {
+    const { fields } = useFormStore.getState()
     // Mặc định thêm field Trắc nghiệm (radio)
     onInsert([{
       type: 'radio',
@@ -99,8 +96,6 @@ export default function FormSidebar({ onInsert }) {
     ], { isBlock: true })
   }
 
-  const handleThemeClick = () => openTheme()
-
   return (
     <div className="eforms-sidebar">
       <div className="eforms-sidebar-content">
@@ -130,12 +125,6 @@ export default function FormSidebar({ onInsert }) {
 
         <SidebarButton label="Thêm phần ngẫu nhiên" onClick={handleAddRandomSection}>
           <Shuffle className="w-5 h-5" />
-        </SidebarButton>
-
-        <div className="eforms-sidebar-divider"></div>
-
-        <SidebarButton label="Chỉnh sửa giao diện" onClick={handleThemeClick}>
-          <Palette className="w-5 h-5" />
         </SidebarButton>
       </div>
     </div>

@@ -23,11 +23,14 @@ export const docOf = (state) => ({
 
 const fromDoc = (state, doc) => {
   const { title, description, ...attrs } = doc.form
+  const form = state.currentForm
+  // Same object when no attribute changed: the theme and everything derived from the form stay stable.
+  const formChanged = form && Object.keys(attrs).some((k) => attrs[k] !== form[k])
   return {
     fields: doc.fields === state.fields ? state.fields : withOrder(doc.fields),
     title: title ?? '',
     description: description ?? '',
-    currentForm: state.currentForm ? { ...state.currentForm, ...attrs } : state.currentForm,
+    currentForm: formChanged ? { ...form, ...attrs } : form,
   }
 }
 

@@ -99,7 +99,6 @@ export default function EditableTitle({ title, description, onChange, theme, cla
               className="eforms-title-input"
               placeholder="Mẫu không có tiêu đề"
               style={{
-                color: theme?.primary_color,
                 fontSize: theme?.header_font_size,
               }}
             />
@@ -109,7 +108,6 @@ export default function EditableTitle({ title, description, onChange, theme, cla
             className="eforms-title"
             onClick={readOnly ? undefined : () => setEditingTitle(true)}
             style={{
-              color: theme?.primary_color,
               fontSize: theme?.header_font_size,
             }}
           >

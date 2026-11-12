@@ -14,15 +14,16 @@ import {
 } from '../../utils/formStructure'
 
 const stop = (e) => e.stopPropagation()
+const POINTER_OPTIONS = { activationConstraint: { distance: 5 } }
 
 export default function RandomSectionCard({ field, index, isActive, onClick, theme, activeVariant, onSelectVariant, hasResponses }) {
-  const { updateField, setFields, duplicateField } = useFormStore()
+  const { updateField, setFields, duplicateField } = useFormStore.getState()
   const fields = useFormStore((s) => s.fields)
   const [showCondition, setShowCondition] = useState(false)
   const [copySource, setCopySource] = useState('')
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: field.key })
-  const variantSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+  const variantSensors = useSensors(useSensor(PointerSensor, POINTER_OPTIONS))
 
   const settings = field.settings || {}
   const variants = variantsOf(field)

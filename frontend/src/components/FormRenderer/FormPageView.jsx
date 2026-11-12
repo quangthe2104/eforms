@@ -75,7 +75,6 @@ function QuestionCard({ inst, value, error, onChange, theme }) {
           className="block font-bold text-gray-900"
           style={{
             fontSize: theme.question_font_size || '16px',
-            color: theme.primary_color || '#111827',
             fontFamily: theme.font_family || 'inherit',
           }}
         >

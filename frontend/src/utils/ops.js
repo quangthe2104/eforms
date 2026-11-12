@@ -250,6 +250,14 @@ function lisSet(seq) {
 /** Ops turning field list `before` into `after`: deletes, then inserts/moves in final order, then updates. */
 export function diffFields(before, after) {
   const ops = []
+  if (before.length === after.length && before.every((f, i) => f === after[i] || f.key === after[i].key)) {
+    before.forEach((old, i) => {
+      if (old === after[i]) return
+      const set = diffSet(old, after[i], FIELD_PROPS, FIELD_OBJECT_PROPS)
+      if (Object.keys(set).length) ops.push({ type: 'field.update', key: old.key, set })
+    })
+    return ops
+  }
   const afterKeys = new Set(after.map((f) => f.key))
   const beforeByKey = new Map(before.map((f) => [f.key, f]))
 
