@@ -1,0 +1,39 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Shell scripts should always use LF
+*.sh text eol=lf
+
+# Batch files should use CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Windows specific files
+*.ps1 text eol=crlf
+
+# Unix specific files
+*.sh text eol=lf
+
+# PHP files
+*.php text eol=lf
+
+# JavaScript/TypeScript
+*.js text eol=lf
+*.jsx text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+
+# JSON, YAML, etc
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Markdown
+*.md text eol=lf
+
+# Config files
+*.env text eol=lf
+*.env.example text eol=lf
+*.config.js text eol=lf
+*.config.ts text eol=lf
+

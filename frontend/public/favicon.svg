@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- Background circle -->
+  <circle cx="16" cy="16" r="15" fill="#2563eb" stroke="#1e40af" stroke-width="2"/>
+  
+  <!-- Document icon (FileText style) -->
+  <path d="M10 8h8v2h-8V8zm0 4h8v2h-8v-2zm0 4h6v2h-6v-2z" fill="white"/>
+  <path d="M10 6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V12l-6-6H10zm8 4h4v12H10V8h6v2h2z" fill="white" opacity="0.9"/>
+</svg>
+
+
+

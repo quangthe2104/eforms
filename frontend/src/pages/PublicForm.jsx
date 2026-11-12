@@ -1,524 +1,291 @@
-import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { responseAPI } from '../services/api'
+import { useEffect, useMemo, useState } from 'react'
+import { useParams, Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { CheckCircle, Loader } from 'lucide-react'
+import { CheckCircle, Loader, Lock, AlertTriangle, Info } from 'lucide-react'
+import { responseAPI } from '../services/api'
+import { normalizeFields } from '../utils/formStructure'
+import {
+  evaluateForm, paginate, validatePages, submissionAnswers, filterAnswers, filterGroupsOnPage, pendingPageCount,
+} from '../utils/formRuntime'
+import FormPageView from '../components/FormRenderer/FormPageView'
+import { useFormTheme, FormFrame, PageProgress } from '../components/FormRenderer/FormChrome'
+
+const DEVICE_KEY = 'eforms_device_id'
+const CHECK_MESSAGE = 'Vui lòng kiểm tra lại các câu được đánh dấu.'
+
+const readJSON = (store, key) => {
+  try {
+    return JSON.parse(store.getItem(key))
+  } catch {
+    return null
+  }
+}
+
+const scrollToFirstError = () =>
+  setTimeout(() => document.querySelector('[data-error="true"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60)
 
 export default function PublicForm() {
   const { slug } = useParams()
+  const tokenKey = `eforms_session:${slug}`
+  const draftKey = `eforms_draft:${slug}`
+
   const [form, setForm] = useState(null)
+  const [fields, setFields] = useState([])
   const [loading, setLoading] = useState(true)
-  const [submitting, setSubmitting] = useState(false)
-  const [submitted, setSubmitted] = useState(false)
+  const [deviceId, setDeviceId] = useState(null)
+  const [token, setToken] = useState(null)
+  const [assignments, setAssignments] = useState({})
   const [answers, setAnswers] = useState({})
-  const [currentPage, setCurrentPage] = useState(0)
+  const [errors, setErrors] = useState({})
+  const [pageIndex, setPageIndex] = useState(0)
+  const [busy, setBusy] = useState(false)
+  const [assignError, setAssignError] = useState(null)
+  const [blocked, setBlocked] = useState(null)
+  const [notice, setNotice] = useState(null)
+  const [submitted, setSubmitted] = useState(null)
+  const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
-    fetchForm()
+    let active = true
+    loadForm(() => active)
+    return () => {
+      active = false
+    }
   }, [slug])
 
-  // Apply theme to page
-  useEffect(() => {
-    if (form) {
-      // Set CSS variables
-      if (form.primary_color) {
-        document.documentElement.style.setProperty('--theme-primary', form.primary_color)
-      }
-      if (form.secondary_color) {
-        document.documentElement.style.setProperty('--theme-secondary', form.secondary_color)
-      }
-      if (form.background_color) {
-        document.documentElement.style.setProperty('--theme-bg', form.background_color)
-        document.body.style.backgroundColor = form.background_color
-      }
-    }
+  useFormTheme(form)
 
-    return () => {
-      // Cleanup
-      document.documentElement.style.removeProperty('--theme-primary')
-      document.documentElement.style.removeProperty('--theme-secondary')
-      document.documentElement.style.removeProperty('--theme-bg')
-      document.body.style.backgroundColor = ''
-    }
-  }, [form])
+  const rememberToken = (value) => {
+    setToken(value || null)
+    if (value) localStorage.setItem(tokenKey, value)
+    else localStorage.removeItem(tokenKey)
+  }
 
-  const fetchForm = async () => {
+  /** `isActive` is false once the effect is cleaned up, so a superseded load never writes the device id or state. */
+  const loadForm = async (isActive) => {
+    setLoading(true)
     try {
-      const response = await responseAPI.getPublicForm(slug)
-      setForm(response.data)
-    } catch (error) {
-      toast.error('Không tìm thấy biểu mẫu hoặc biểu mẫu không khả dụng')
-    } finally {
-      setLoading(false)
-    }
-  }
+      const storedDevice = localStorage.getItem(DEVICE_KEY)
+      const { data } = await responseAPI.getPublicForm(slug, storedDevice ? { device_id: storedDevice } : undefined)
+      if (!isActive()) return
+      if (data.device_id) localStorage.setItem(DEVICE_KEY, data.device_id)
+      const normalized = normalizeFields(data.fields)
+      setDeviceId(data.device_id || storedDevice)
+      setFields(normalized)
+      setForm(data)
 
-  const handleAnswerChange = (fieldId, value) => {
-    setAnswers(prev => ({ ...prev, [fieldId]: value }))
-  }
-
-  // Split fields into pages based on section breaks
-  const splitFieldsIntoPages = (fields) => {
-    if (!fields || fields.length === 0) return [[]]
-    
-    const pages = []
-    let currentPageFields = []
-    
-    fields.forEach((field) => {
-      if (field.type === 'section') {
-        // Push current page if it has fields
-        if (currentPageFields.length > 0) {
-          pages.push(currentPageFields)
-        }
-        // Start new page with the section as first field
-        currentPageFields = [field]
-      } else {
-        currentPageFields.push(field)
+      const status = data.limit_status
+      if (status?.status === 'limit_reached') {
+        setBlocked({ message: status.message })
+        return
       }
-    })
-    
-    // Push last page
-    if (currentPageFields.length > 0) {
-      pages.push(currentPageFields)
+
+      let tok = localStorage.getItem(tokenKey)
+      let assigned = {}
+      let restored = {}
+      if (status?.status === 'editing') {
+        tok = status.token
+        assigned = status.assignments || {}
+        restored = status.answers || {}
+        setNotice('Ông/Bà đã gửi câu trả lời cho biểu mẫu này. Câu trả lời trước đã được nạp lại để sửa; khi gửi, bản mới sẽ thay thế bản cũ.')
+      } else if (tok && normalized.some((f) => f.type === 'random_section')) {
+        try {
+          const res = await responseAPI.assignVariants(slug, { token: tok, device_id: data.device_id, group_keys: [] })
+          tok = res.data.token
+          assigned = res.data.assignments || {}
+        } catch {
+          // Variants are drawn again when the respondent reaches the block.
+        }
+        if (!isActive()) return
+      }
+
+      const draft = readJSON(sessionStorage, draftKey)
+      if (draft && (draft.token ?? null) === (tok ?? null)) {
+        restored = { ...restored, ...(draft.answers || {}) }
+        setPageIndex(draft.page || 0)
+      }
+      rememberToken(tok)
+      setAssignments(assigned)
+      setAnswers(restored)
+    } catch {
+      if (isActive()) setForm(null)
+    } finally {
+      if (isActive()) setLoading(false)
     }
-    
-    return pages.length > 0 ? pages : [[]]
   }
 
-  const pages = form?.fields ? splitFieldsIntoPages(form.fields) : [[]]
-  const totalPages = pages.length
-  const currentPageFields = pages[currentPage] || []
+  const evaluated = useMemo(() => evaluateForm(fields, assignments, answers), [fields, assignments, answers])
+  const pages = useMemo(() => paginate(evaluated), [evaluated])
+  const headers = useMemo(
+    () => Object.fromEntries(fields.filter((f) => f.type === 'random_section').map((f) => [f.key, f])),
+    [fields]
+  )
+  const visibleIndexes = pages.filter((p) => p.visible).map((p) => p.index)
+  const current = pages[pageIndex]
+  const nextIndex = visibleIndexes.find((i) => i > pageIndex)
+  const prevIndex = [...visibleIndexes].reverse().find((i) => i < pageIndex)
 
-  const handleNextPage = (e) => {
-    if (e) {
-      e.preventDefault()
-      e.stopPropagation()
+  useEffect(() => {
+    if (!pages.length || current?.visible) return
+    const fallback = [...visibleIndexes].reverse().find((i) => i < pageIndex) ?? visibleIndexes[0]
+    if (fallback !== undefined && fallback !== pageIndex) setPageIndex(fallback)
+  }, [pages, pageIndex])
+
+  useEffect(() => {
+    if (!form || submitted || blocked) return
+    const plain = Object.fromEntries(Object.entries(answers).filter(([, v]) => !(v instanceof File)))
+    sessionStorage.setItem(draftKey, JSON.stringify({ token, page: pageIndex, answers: plain }))
+  }, [answers, pageIndex, token])
+
+  useEffect(() => {
+    if (current?.pending && current.visible && !busy && !assignError) assignGroups([current.group])
+  }, [current?.pending, current?.group, busy, assignError])
+
+  const goTo = (index) => {
+    setPageIndex(index)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const handleChange = (key, value) => {
+    setAnswers((prev) => ({ ...prev, [key]: value }))
+    setErrors((prev) => {
+      if (!prev[key]) return prev
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
+  }
+
+  const assignGroups = async (groupKeys) => {
+    setBusy(true)
+    setAssignError(null)
+    try {
+      const { data } = await responseAPI.assignVariants(slug, {
+        token,
+        device_id: deviceId,
+        answers: filterAnswers(fields, groupKeys, answers),
+        group_keys: groupKeys,
+      })
+      if (data.token) rememberToken(data.token)
+      setAssignments((prev) => ({ ...prev, ...(data.assignments || {}) }))
+      return true
+    } catch (error) {
+      if (error.response?.status === 403) {
+        setBlocked({ title: 'Biểu mẫu đã đóng', message: error.response.data?.message })
+      } else {
+        setAssignError(error.response?.data?.message || 'Không kết nối được máy chủ. Vui lòng thử lại.')
+      }
+      return false
+    } finally {
+      setBusy(false)
     }
-    
-    // Validate current page required fields
-    const missingFields = currentPageFields.filter(
-      field => field.type !== 'section' && field.type !== 'description' && 
-               field.type !== 'image' && field.type !== 'video' &&
-               field.is_required && !answers[field.id]
-    )
-    
-    if (missingFields.length > 0) {
-      toast.error('Vui lòng điền tất cả các trường bắt buộc')
+  }
+
+  const limit = form?.respondent_limit
+  const identityFields = limit
+    ? ['email', 'phone'].filter((m) => limit.methods?.includes(m) && limit.field_keys?.[m]).map((m) => ({ method: m, key: limit.field_keys[m] }))
+    : []
+
+  /** Checks email/phone when leaving the page that asks for them; the server checks again on submit. */
+  const checkIdentityOn = async (page) => {
+    if (!identityFields.some(({ key }) => page.items.some((i) => i.field.key === key))) return true
+    const values = {}
+    for (const { method, key } of identityFields) {
+      const at = pages.find((p) => p.items.some((i) => i.field.key === key))
+      const inst = at?.items.find((i) => i.field.key === key)
+      if (inst && at.index <= page.index) values[method] = inst.visible ? String(answers[inst.answerKey] ?? '') : ''
+    }
+    setBusy(true)
+    try {
+      const { data } = await responseAPI.checkIdentity(slug, { token, device_id: deviceId, values })
+      if (data.status === 'limit_reached') {
+        setBlocked({ message: data.message })
+        return false
+      }
+      if (data.status === 'will_replace') setNotice(data.message)
+      return true
+    } catch (error) {
+      if (error.response?.status === 429) {
+        toast.error('Thao tác quá nhanh, vui lòng thử lại sau ít phút.')
+        return false
+      }
+      return true
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleNext = async () => {
+    if (busy || !current) return
+    const pageErrors = validatePages([current], answers)
+    setErrors(pageErrors)
+    if (Object.keys(pageErrors).length) {
+      toast.error(CHECK_MESSAGE, { id: 'validation' })
+      scrollToFirstError()
       return
     }
+    if (!(await checkIdentityOn(current))) return
 
-    if (currentPage < totalPages - 1) {
-      setCurrentPage(currentPage + 1)
-      window.scrollTo({ top: 0, behavior: 'smooth' })
+    const groups = filterGroupsOnPage(fields, current, assignments)
+    if (groups.length && !(await assignGroups(groups))) {
+      toast.error('Không kết nối được máy chủ. Vui lòng bấm "Tiếp theo" để thử lại.')
+      return
     }
+    if (nextIndex !== undefined) goTo(nextIndex)
   }
 
-  const handlePreviousPage = (e) => {
-    if (e) {
-      e.preventDefault()
-      e.stopPropagation()
-    }
-    
-    if (currentPage > 0) {
-      setCurrentPage(currentPage - 1)
-      window.scrollTo({ top: 0, behavior: 'smooth' })
-    }
+  const showErrors = (found) => {
+    setErrors(found)
+    const first = pages.find((p) => p.visible && p.items.some((i) => found[i.answerKey]))
+    if (first && first.index !== pageIndex) goTo(first.index)
+    scrollToFirstError()
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    
-    // Only submit if on last page
-    if (currentPage !== totalPages - 1) {
-      return
-    }
-    
-    // Validate all required fields across all pages
-    const allFields = form.fields
-    const missingFields = allFields.filter(
-      field => field.type !== 'section' && field.type !== 'description' && 
-               field.type !== 'image' && field.type !== 'video' &&
-               field.is_required && !answers[field.id]
-    )
-    
-    if (missingFields.length > 0) {
-      toast.error('Vui lòng điền tất cả các trường bắt buộc')
+    if (nextIndex !== undefined || submitting || busy) return
+
+    const allErrors = validatePages(pages, answers)
+    if (Object.keys(allErrors).length) {
+      showErrors(allErrors)
+      toast.error(CHECK_MESSAGE, { id: 'validation' })
       return
     }
 
     setSubmitting(true)
     try {
-      await responseAPI.submitForm(slug, { answers })
-      setSubmitted(true)
-      toast.success('Đã gửi biểu mẫu thành công!')
+      const { data } = await responseAPI.submitForm(slug, { answers: submissionAnswers(pages, answers), token, device_id: deviceId })
+      rememberToken(null)
+      sessionStorage.removeItem(draftKey)
+      setSubmitted({ edited: !!data.edited })
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Không thể gửi biểu mẫu')
+      const status = error.response?.status
+      const data = error.response?.data || {}
+      if (status === 422 && data.errors) {
+        const mapped = Object.fromEntries(
+          Object.entries(data.errors)
+            .filter(([k]) => k.startsWith('answers.'))
+            .map(([k, v]) => [k.slice('answers.'.length), Array.isArray(v) ? v[0] : String(v)])
+        )
+        if (Object.keys(mapped).length) showErrors(mapped)
+        toast.error(data.message || 'Một số câu trả lời chưa hợp lệ.')
+      } else if (status === 409) {
+        setBlocked({ message: data.message })
+      } else if (status === 403) {
+        setBlocked({ title: 'Biểu mẫu đã đóng', message: data.message })
+      } else {
+        toast.error(data.message || 'Không thể gửi biểu mẫu. Vui lòng thử lại.')
+      }
     } finally {
       setSubmitting(false)
     }
   }
 
-  const renderField = (field) => {
-    const value = answers[field.id] || ''
-
-    switch (field.type) {
-      case 'short_text':
-        return (
-          <input
-            type="text"
-            value={value}
-            onChange={(e) => handleAnswerChange(field.id, e.target.value)}
-            placeholder={field.placeholder || 'Câu trả lời của bạn'}
-            className="input"
-            required={field.is_required}
-          />
-        )
-      
-      case 'long_text':
-        return (
-          <textarea
-            value={value}
-            onChange={(e) => handleAnswerChange(field.id, e.target.value)}
-            placeholder={field.placeholder || 'Câu trả lời của bạn'}
-            className="input"
-            rows="4"
-            required={field.is_required}
-          />
-        )
-      
-      case 'email':
-        return (
-          <input
-            type="email"
-            value={value}
-            onChange={(e) => handleAnswerChange(field.id, e.target.value)}
-            placeholder={field.placeholder}
-            className="input"
-            required={field.is_required}
-          />
-        )
-      
-      case 'number':
-        return (
-          <input
-            type="number"
-            value={value}
-            onChange={(e) => handleAnswerChange(field.id, e.target.value)}
-            placeholder={field.placeholder}
-            className="input"
-            required={field.is_required}
-          />
-        )
-      
-      case 'phone':
-        return (
-          <input
-            type="tel"
-            value={value}
-            onChange={(e) => handleAnswerChange(field.id, e.target.value)}
-            placeholder={field.placeholder}
-            className="input"
-            required={field.is_required}
-          />
-        )
-      
-      case 'url':
-        return (
-          <input
-            type="url"
-            value={value}
-            onChange={(e) => handleAnswerChange(field.id, e.target.value)}
-            placeholder={field.placeholder}
-            className="input"
-            required={field.is_required}
-          />
-        )
-      
-      case 'date':
-        return (
-          <input
-            type="date"
-            value={value}
-            onChange={(e) => handleAnswerChange(field.id, e.target.value)}
-            className="input"
-            required={field.is_required}
-          />
-        )
-      
-      case 'time':
-        return (
-          <input
-            type="time"
-            value={value}
-            onChange={(e) => handleAnswerChange(field.id, e.target.value)}
-            className="input"
-            required={field.is_required}
-          />
-        )
-      
-      case 'datetime':
-        return (
-          <input
-            type="datetime-local"
-            value={value}
-            onChange={(e) => handleAnswerChange(field.id, e.target.value)}
-            className="input"
-            required={field.is_required}
-          />
-        )
-      
-      case 'dropdown':
-        return (
-          <select
-            value={value}
-            onChange={(e) => handleAnswerChange(field.id, e.target.value)}
-            className="input"
-            required={field.is_required}
-          >
-            <option value="">Chọn một tùy chọn</option>
-            {field.options?.map((option, idx) => (
-              <option key={idx} value={option}>{option}</option>
-            ))}
-          </select>
-        )
-      
-      case 'radio':
-        return (
-          <div className="space-y-2">
-            {field.options?.map((option, idx) => (
-              <label key={idx} className="flex items-center space-x-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name={`field-${field.id}`}
-                  value={option}
-                  checked={value === option}
-                  onChange={(e) => handleAnswerChange(field.id, e.target.value)}
-                  required={field.is_required}
-                  className="w-4 h-4 text-primary-600"
-                />
-                <span>{option}</span>
-              </label>
-            ))}
-          </div>
-        )
-      
-      case 'checkbox':
-        const checkboxValues = Array.isArray(value) ? value : []
-        return (
-          <div className="space-y-2">
-            {field.options?.map((option, idx) => (
-              <label key={idx} className="flex items-center space-x-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  value={option}
-                  checked={checkboxValues.includes(option)}
-                  onChange={(e) => {
-                    const newValues = e.target.checked
-                      ? [...checkboxValues, option]
-                      : checkboxValues.filter(v => v !== option)
-                    handleAnswerChange(field.id, newValues)
-                  }}
-                  className="w-4 h-4 text-primary-600"
-                />
-                <span>{option}</span>
-              </label>
-            ))}
-          </div>
-        )
-      
-      case 'file_upload':
-        return (
-          <input
-            type="file"
-            onChange={(e) => handleAnswerChange(field.id, e.target.files[0])}
-            className="input"
-            required={field.is_required}
-          />
-        )
-      
-      case 'rating':
-        const rating = parseInt(value) || 0
-        return (
-          <div className="flex space-x-2">
-            {[1, 2, 3, 4, 5].map((star) => (
-              <button
-                key={star}
-                type="button"
-                onClick={() => handleAnswerChange(field.id, star)}
-                className={`text-3xl transition-colors ${
-                  star <= rating ? 'text-yellow-400' : 'text-gray-300'
-                }`}
-              >
-                ★
-              </button>
-            ))}
-          </div>
-        )
-      
-      case 'multiple_choice_grid':
-        const gridRadioValues = value || {}
-        return field.rows && field.columns ? (
-          <div className="overflow-x-auto">
-            <table className="min-w-full border-collapse">
-              <thead>
-                <tr>
-                  <th className="border-b border-gray-300 px-4 py-3 text-left text-sm font-medium text-gray-700"></th>
-                  {field.columns.map((column, i) => (
-                    <th key={i} className="border-b border-gray-300 px-4 py-3 text-center text-sm font-medium text-gray-700">
-                      {column}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {field.rows.map((row, rowIdx) => (
-                  <tr key={rowIdx} className="hover:bg-gray-50">
-                    <td className="border-b border-gray-300 px-4 py-3 text-sm text-gray-700">
-                      {row}
-                    </td>
-                    {field.columns.map((column, colIdx) => (
-                      <td key={colIdx} className="border-b border-gray-300 px-4 py-3 text-center">
-                        <input
-                          type="radio"
-                          name={`grid-${field.id}-row-${rowIdx}`}
-                          value={column}
-                          checked={gridRadioValues[row] === column}
-                          onChange={() => {
-                            const newValues = { ...gridRadioValues, [row]: column }
-                            handleAnswerChange(field.id, newValues)
-                          }}
-                          required={field.is_required && rowIdx === 0}
-                          className="w-4 h-4"
-                        />
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : null
-      
-      case 'checkbox_grid':
-        const gridCheckboxValues = value || {}
-        return field.rows && field.columns ? (
-          <div className="overflow-x-auto">
-            <table className="min-w-full border-collapse">
-              <thead>
-                <tr>
-                  <th className="border-b border-gray-300 px-4 py-3 text-left text-sm font-medium text-gray-700"></th>
-                  {field.columns.map((column, i) => (
-                    <th key={i} className="border-b border-gray-300 px-4 py-3 text-center text-sm font-medium text-gray-700">
-                      {column}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {field.rows.map((row, rowIdx) => (
-                  <tr key={rowIdx} className="hover:bg-gray-50">
-                    <td className="border-b border-gray-300 px-4 py-3 text-sm text-gray-700">
-                      {row}
-                    </td>
-                    {field.columns.map((column, colIdx) => (
-                      <td key={colIdx} className="border-b border-gray-300 px-4 py-3 text-center">
-                        <input
-                          type="checkbox"
-                          value={column}
-                          checked={gridCheckboxValues[row]?.includes(column) || false}
-                          onChange={(e) => {
-                            const rowValues = gridCheckboxValues[row] || []
-                            const newRowValues = e.target.checked
-                              ? [...rowValues, column]
-                              : rowValues.filter(v => v !== column)
-                            const newValues = { ...gridCheckboxValues, [row]: newRowValues }
-                            handleAnswerChange(field.id, newValues)
-                          }}
-                          className="w-4 h-4"
-                        />
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : null
-      
-      case 'scale':
-        return (
-          <div className="space-y-2">
-            <input
-              type="range"
-              min="1"
-              max="10"
-              value={value || 5}
-              onChange={(e) => handleAnswerChange(field.id, e.target.value)}
-              className="w-full"
-            />
-            <div className="flex justify-between text-sm text-gray-600">
-              <span>1</span>
-              <span className="font-semibold">{value || 5}</span>
-              <span>10</span>
-            </div>
-          </div>
-        )
-      
-      case 'section':
-        return (
-          <div className="border-b border-gray-200 pb-2 -mb-2">
-            <h3 className="text-lg font-semibold text-gray-900">{field.label}</h3>
-            {field.description && (
-              <div 
-                className="text-sm text-gray-600 mt-1"
-                dangerouslySetInnerHTML={{ __html: field.description }}
-              />
-            )}
-          </div>
-        )
-      
-      case 'description':
-        return (
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">{field.label}</h3>
-            {field.description && (
-              <div 
-                className="text-sm text-gray-600 mt-1"
-                dangerouslySetInnerHTML={{ __html: field.description }}
-              />
-            )}
-          </div>
-        )
-      
-      case 'image':
-        return field.image_url ? (
-          <div className="w-full">
-            <img 
-              src={field.image_url} 
-              alt={field.label || 'Image'}
-              className="max-w-full h-auto rounded"
-              style={{ maxHeight: '400px' }}
-            />
-          </div>
-        ) : null
-      
-      case 'video':
-        return field.video_url ? (
-          <div className="w-full aspect-video">
-            <iframe
-              src={field.video_url.replace('watch?v=', 'embed/')}
-              title={field.label || 'Video'}
-              className="w-full h-full rounded"
-              frameBorder="0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            />
-          </div>
-        ) : null
-      
-      default:
-        return null
-    }
+  const clearAnswers = () => {
+    if (!confirm('Xóa hết câu trả lời đã điền?')) return
+    setAnswers({})
+    setErrors({})
+    if (visibleIndexes.length) goTo(visibleIndexes[0])
   }
 
   if (loading) {
@@ -531,287 +298,170 @@ export default function PublicForm() {
 
   if (!form) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Form Not Found</h2>
-          <p className="text-gray-600">This form is not available or has been closed.</p>
-        </div>
-      </div>
+      <MessageScreen title="Không tìm thấy biểu mẫu" message="Biểu mẫu không tồn tại, chưa được xuất bản hoặc đã bị đóng." />
     )
   }
+
+  const color = form.primary_color || '#4285F4'
 
   if (submitted) {
     return (
-      <div 
-        className="min-h-screen flex items-center justify-center p-4"
-        style={{ 
-          backgroundColor: form.background_color || '#f9fafb',
-          fontFamily: form.font_family || 'system-ui, -apple-system, sans-serif'
-        }}
-      >
-        <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full text-center">
-          <CheckCircle 
-            className="w-16 h-16 mx-auto mb-4" 
-            style={{ color: form.primary_color || '#10b981' }}
-          />
-          <h2 
-            className="text-2xl font-bold mb-2"
-            style={{ 
-              color: form.primary_color || '#111827',
-              fontSize: form.header_font_size || '24px'
-            }}
-          >
-            Cảm ơn bạn!
-          </h2>
-          <p 
-            className="text-gray-600"
-            style={{ fontSize: form.text_font_size || '14px' }}
-          >
-            {form.custom_thank_you_message || 'Phản hồi của bạn đã được ghi nhận.'}
-          </p>
-        </div>
-      </div>
+      <MessageScreen
+        form={form}
+        icon={<CheckCircle className="w-16 h-16 mx-auto mb-4" style={{ color: form.primary_color || '#10b981' }} />}
+        title={submitted.edited ? 'Đã cập nhật câu trả lời' : 'Cảm ơn bạn!'}
+        message={form.custom_thank_you_message || 'Phản hồi của bạn đã được ghi nhận.'}
+      />
     )
   }
 
-  return (
-    <>
-      <style>{`
-        .eforms-header-content a,
-        .text-gray-700 a,
-        .text-gray-600 a,
-        .text-sm a {
-          color: ${form.primary_color || '#4285F4'} !important;
-          text-decoration: underline !important;
-          cursor: pointer;
-        }
-        .eforms-header-content a:hover,
-        .text-gray-700 a:hover,
-        .text-gray-600 a:hover,
-        .text-sm a:hover {
-          opacity: 0.8;
-        }
-        .eforms-header-content ol,
-        .text-gray-700 ol,
-        .text-gray-600 ol,
-        .text-sm ol {
-          list-style-type: decimal;
-          padding-left: 2em;
-          margin: 0.5em 0;
-        }
-        .eforms-header-content ul,
-        .text-gray-700 ul,
-        .text-gray-600 ul,
-        .text-sm ul {
-          list-style-type: disc;
-          padding-left: 2em;
-          margin: 0.5em 0;
-        }
-        .eforms-header-content li,
-        .text-gray-700 li,
-        .text-gray-600 li,
-        .text-sm li {
-          margin: 0.25em 0;
-        }
-      `}</style>
-      <div 
-        className="min-h-screen py-8 px-4"
-        style={{ 
-          backgroundColor: form.background_color || '#f9fafb',
-          fontFamily: form.font_family || 'system-ui, -apple-system, sans-serif'
-        }}
-      >
-        <div className="max-w-2xl mx-auto space-y-4">
-        {/* Header Image (if exists) */}
-        {form.header_image && (
-          <div className="w-full rounded-lg overflow-hidden">
-            <img 
-              src={form.header_image} 
-              alt="Header" 
-              className="w-full h-40 object-cover"
-            />
-          </div>
-        )}
-        
-        {/* Header Card */}
-        <div className="eforms-header">
-          <div 
-            className="eforms-header-top"
-            style={{
-              background: form.primary_color 
-                ? `linear-gradient(to right, ${form.primary_color}, ${form.primary_color}, ${form.secondary_color || form.primary_color})` 
-                : 'linear-gradient(to right, #4285F4, #3b82f6, #60a5fa)'
-            }}
-          ></div>
-          
-          <div className="eforms-header-content">
-            <h1 
-              className="text-3xl font-normal mb-2"
-              style={{
-                fontSize: form.header_font_size || '32px',
-                color: form.primary_color || '#111827',
-                fontFamily: form.font_family || 'inherit'
-              }}
-            >
-              {form.title}
-            </h1>
-            {form.description && (
-              <div 
-                className="text-gray-700"
-                style={{
-                  fontSize: form.text_font_size || '14px',
-                  fontFamily: form.font_family || 'inherit'
-                }}
-                dangerouslySetInnerHTML={{ __html: form.description }}
-              />
-            )}
-          </div>
-        </div>
+  if (blocked) {
+    return (
+      <MessageScreen
+        form={form}
+        icon={<Info className="w-14 h-14 mx-auto mb-4" style={{ color }} />}
+        title={blocked.title || form.title}
+        message={blocked.message || 'Biểu mẫu này hiện không nhận câu trả lời.'}
+      />
+    )
+  }
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Page indicator for multi-page forms */}
-          {totalPages > 1 && (
-            <div className="bg-white rounded-lg border border-gray-200 px-6 py-3">
-              <div className="flex items-center justify-between text-sm">
-                <span 
-                  className="font-medium"
-                  style={{ color: form.primary_color || '#4285F4' }}
-                >
-                  Trang {currentPage + 1} / {totalPages}
-                </span>
-                <div className="flex-1 mx-4">
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div 
-                      className="h-2 rounded-full transition-all duration-300"
-                      style={{ 
-                        width: `${((currentPage + 1) / totalPages) * 100}%`,
-                        backgroundColor: form.primary_color || '#4285F4'
-                      }}
-                    ></div>
-                  </div>
-                </div>
-              </div>
+  if (form.accepting === false) {
+    return (
+      <MessageScreen
+        form={form}
+        icon={<Lock className="w-14 h-14 mx-auto mb-4 text-gray-400" />}
+        title="Biểu mẫu đã đóng"
+        message="Biểu mẫu này hiện không nhận câu trả lời."
+      />
+    )
+  }
+
+  if (form.require_login && !localStorage.getItem('token')) {
+    return (
+      <MessageScreen
+        form={form}
+        icon={<Lock className="w-14 h-14 mx-auto mb-4" style={{ color }} />}
+        title="Cần đăng nhập"
+        message="Vui lòng đăng nhập để trả lời biểu mẫu này."
+        action={<Link to="/login" className="btn btn-primary mt-6 inline-block">Đăng nhập</Link>}
+      />
+    )
+  }
+
+  const totalVisible = visibleIndexes.reduce(
+    (sum, i) => sum + (pages[i].pending ? pendingPageCount(pages[i].items[0].field, fields) : 1),
+    0
+  )
+  const position = visibleIndexes.indexOf(pageIndex) + 1
+
+  return (
+    <FormFrame form={form} showDescription={pageIndex === visibleIndexes[0]}>
+          {notice && (
+            <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
+              <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+              <span>{notice}</span>
             </div>
           )}
 
-          {/* Current page fields */}
-          {currentPageFields.map((field) => (
-            <div key={field.id} className="bg-white rounded-lg border border-gray-200 p-6 transition-all duration-200 hover:shadow-md">
-              {!['section', 'description', 'image', 'video'].includes(field.type) ? (
-                <div className="space-y-3">
-                  <label 
-                    className="block font-bold text-gray-900"
-                    style={{
-                      fontSize: form.question_font_size || '16px',
-                      color: form.primary_color || '#111827',
-                      fontFamily: form.font_family || 'inherit'
-                    }}
-                  >
-                    {field.label}
-                    {field.is_required && (
-                      <span className="text-red-500 ml-1">*</span>
-                    )}
-                  </label>
-                  {field.help_text && (
-                    <p 
-                      className="text-gray-500"
-                      style={{
-                        fontSize: form.text_font_size || '14px',
-                        fontFamily: form.font_family || 'inherit'
-                      }}
-                    >
-                      {field.help_text}
-                    </p>
-                  )}
-                  <div className="mt-4">
-                    {renderField(field)}
+          <form onSubmit={handleSubmit} noValidate className="space-y-4">
+            <PageProgress position={position} total={totalVisible} color={color} />
+
+            {current?.pending ? (
+              <div className="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-600">
+                {assignError ? (
+                  <>
+                    <p className="text-red-600 mb-4">{assignError}</p>
+                    <button type="button" className="btn btn-primary" onClick={() => setAssignError(null)}>
+                      Thử lại
+                    </button>
+                  </>
+                ) : (
+                  <div className="flex items-center justify-center gap-2">
+                    <Loader className="w-5 h-5 animate-spin" /> Đang chuẩn bị nội dung…
                   </div>
-                </div>
-              ) : (
-                <div>
-                  {renderField(field)}
-                </div>
-              )}
+                )}
+              </div>
+            ) : (
+              current && (
+                <FormPageView page={current} headers={headers} answers={answers} errors={errors} onChange={handleChange} theme={form} />
+              )
+            )}
+
+            <div className="flex items-center justify-between pt-2">
+              <div className="flex items-center space-x-3">
+                {prevIndex !== undefined && (
+                  <button
+                    type="button"
+                    onClick={() => goTo(prevIndex)}
+                    disabled={busy || submitting}
+                    className="btn flex items-center justify-center space-x-2 transition-all px-6 py-2.5 rounded font-medium border"
+                    style={{ borderColor: color, color, backgroundColor: '#ffffff' }}
+                  >
+                    <span>Quay lại</span>
+                  </button>
+                )}
+
+                {nextIndex !== undefined ? (
+                  !current?.pending && (
+                    <button
+                      type="button"
+                      onClick={handleNext}
+                      disabled={busy}
+                      className="btn flex items-center justify-center space-x-2 transition-all px-8 py-2.5 rounded font-medium"
+                      style={{ backgroundColor: color, color: '#ffffff', opacity: busy ? 0.7 : 1 }}
+                    >
+                      {busy && <Loader className="w-4 h-4 animate-spin" />}
+                      <span>Tiếp theo</span>
+                    </button>
+                  )
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={submitting || busy}
+                    className="btn flex items-center justify-center space-x-2 transition-all px-8 py-2.5 rounded font-medium"
+                    style={{ backgroundColor: color, color: '#ffffff', opacity: submitting ? 0.7 : 1 }}
+                  >
+                    {submitting ? (
+                      <>
+                        <Loader className="w-4 h-4 animate-spin" />
+                        <span>Đang gửi...</span>
+                      </>
+                    ) : (
+                      <span>Gửi</span>
+                    )}
+                  </button>
+                )}
+              </div>
+
+              <button type="button" onClick={clearAnswers} className="text-sm font-medium transition-colors" style={{ color }}>
+                Xóa hết câu trả lời
+              </button>
             </div>
-          ))}
-
-          {/* Navigation Buttons */}
-          <div className="flex items-center justify-between pt-2">
-            <div className="flex items-center space-x-3">
-              {/* Previous button - show only if not on first page */}
-              {currentPage > 0 && (
-                <button
-                  type="button"
-                  onClick={(e) => handlePreviousPage(e)}
-                  className="btn flex items-center justify-center space-x-2 transition-all px-6 py-2.5 rounded font-medium border"
-                  style={{
-                    borderColor: form.primary_color || '#4285F4',
-                    color: form.primary_color || '#4285F4',
-                    backgroundColor: '#ffffff'
-                  }}
-                >
-                  <span>Quay lại</span>
-                </button>
-              )}
-
-              {/* Next/Submit button */}
-              {currentPage < totalPages - 1 ? (
-                <button
-                  type="button"
-                  onClick={(e) => handleNextPage(e)}
-                  className="btn flex items-center justify-center space-x-2 transition-all px-8 py-2.5 rounded font-medium"
-                  style={{
-                    backgroundColor: form.primary_color || '#4285F4',
-                    color: '#ffffff'
-                  }}
-                >
-                  <span>Tiếp theo</span>
-                </button>
-              ) : (
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="btn flex items-center justify-center space-x-2 transition-all px-8 py-2.5 rounded font-medium"
-                  style={{
-                    backgroundColor: form.primary_color || '#4285F4',
-                    color: '#ffffff',
-                    opacity: submitting ? 0.7 : 1
-                  }}
-                >
-                  {submitting ? (
-                    <>
-                      <Loader className="w-4 h-4 animate-spin" />
-                      <span>Đang gửi...</span>
-                    </>
-                  ) : (
-                    <span>Gửi</span>
-                  )}
-                </button>
-              )}
-            </div>
-
-            {/* Clear answers button */}
-            <button
-              type="button"
-              onClick={() => setAnswers({})}
-              className="text-sm font-medium transition-colors"
-              style={{
-                color: form.primary_color || '#4285F4'
-              }}
-            >
-              Xóa hết câu trả lời
-            </button>
-          </div>
-        </form>
-
-        {/* Footer */}
-        <div className="text-center mt-4 text-sm text-gray-500">
-          Powered by eForms
-        </div>
-        </div>
-      </div>
-    </>
+          </form>
+    </FormFrame>
   )
 }
 
+function MessageScreen({ form, icon, title, message, action }) {
+  return (
+    <div
+      className="min-h-screen flex items-center justify-center p-4"
+      style={{ backgroundColor: form?.background_color || '#f9fafb', fontFamily: form?.font_family || 'system-ui, -apple-system, sans-serif' }}
+    >
+      <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full text-center" data-screen="message">
+        {icon}
+        <h2
+          className="text-2xl font-bold mb-2"
+          style={{ color: form?.primary_color || '#111827', fontSize: form?.header_font_size || '24px' }}
+        >
+          {title}
+        </h2>
+        <p className="text-gray-600 whitespace-pre-line" style={{ fontSize: form?.text_font_size || '14px' }}>
+          {message}
+        </p>
+        {action}
+      </div>
+    </div>
+  )
+}

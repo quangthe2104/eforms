@@ -7,6 +7,7 @@ use App\Http\Controllers\FormController;
 use App\Http\Controllers\FormFieldController;
 use App\Http\Controllers\FormResponseController;
 use App\Http\Controllers\ExportController;
+use App\Http\Controllers\PublicFormController;
 use App\Http\Controllers\ThumbnailController;
 
 /*
@@ -20,8 +21,10 @@ Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 
 // Public form routes (no auth required)
-Route::get('/forms/public/{slug}', [FormResponseController::class, 'getPublicForm']);
-Route::post('/forms/public/{slug}/submit', [FormResponseController::class, 'submit']);
+Route::get('/forms/public/{slug}', [PublicFormController::class, 'show']);
+Route::post('/forms/public/{slug}/assign', [PublicFormController::class, 'assign'])->middleware('throttle:120,1');
+Route::post('/forms/public/{slug}/check-identity', [PublicFormController::class, 'checkIdentity'])->middleware('throttle:30,1');
+Route::post('/forms/public/{slug}/submit', [PublicFormController::class, 'submit'])->middleware('throttle:120,1');
 
 // Protected routes
 Route::middleware('auth:sanctum')->group(function () {
@@ -46,6 +49,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Form response routes
     Route::get('/forms/{form}/responses', [FormResponseController::class, 'index']);
+    Route::get('/forms/{form}/responses/summary', [FormResponseController::class, 'summary']);
     Route::get('/forms/{form}/responses/{response}', [FormResponseController::class, 'show']);
     Route::delete('/forms/{form}/responses/{response}', [FormResponseController::class, 'destroy']);
 

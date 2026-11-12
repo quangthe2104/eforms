@@ -4,6 +4,8 @@
 
 Script tự động deploy eForms lên server với đầy đủ các bước cần thiết.
 
+> 💡 **Bạn đang dùng Hostinger?** Xem hướng dẫn chi tiết tại [HOSTINGER-DEPLOY.md](HOSTINGER-DEPLOY.md) để biết cách kết nối SSH và chạy script trên Hostinger VPS.
+
 ## ⚙️ Cấu hình trước khi chạy
 
 Mở file `deploy.sh` và chỉnh sửa các thông tin sau ở đầu file:

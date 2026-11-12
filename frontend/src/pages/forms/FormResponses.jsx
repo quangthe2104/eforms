@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { formAPI, responseAPI, exportAPI } from '../../services/api'
+import { normalizeFields } from '../../utils/formStructure'
+import { assignmentSummary } from '../../utils/responseView'
 import toast from 'react-hot-toast'
-import { ArrowLeft, Download, Trash2, Eye, Calendar } from 'lucide-react'
+import { ArrowLeft, Download, Trash2, Eye, Calendar, FileSpreadsheet } from 'lucide-react'
 import { format } from 'date-fns'
+import FormSummary from '../../components/FormSummary'
 
 export default function FormResponses() {
   const { id } = useParams()
@@ -12,6 +15,7 @@ export default function FormResponses() {
   const [responses, setResponses] = useState([])
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
+  const [activeTab, setActiveTab] = useState('summary') // 'summary' or 'individual'
 
   useEffect(() => {
     fetchData()
@@ -64,6 +68,9 @@ export default function FormResponses() {
     }
   }
 
+  const fields = useMemo(() => normalizeFields(form?.fields || []), [form])
+  const hasBlocks = fields.some((f) => f.type === 'random_section')
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -86,93 +93,151 @@ export default function FormResponses() {
           </button>
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{form?.title}</h1>
-            <p className="text-sm text-gray-600">{responses.length} phản hồi</p>
+            <p className="text-sm text-gray-600">Tổng số câu trả lời: {responses.length}</p>
           </div>
         </div>
 
         <button
           onClick={handleExport}
           disabled={exporting || responses.length === 0}
-          className="btn btn-primary flex items-center space-x-2"
+          className="flex items-center space-x-2 px-4 py-2 rounded-lg font-medium text-white transition-colors whitespace-nowrap"
+          style={{
+            backgroundColor: exporting || responses.length === 0 ? '#9ca3af' : '#217346',
+            opacity: exporting || responses.length === 0 ? 0.6 : 1,
+            cursor: exporting || responses.length === 0 ? 'not-allowed' : 'pointer'
+          }}
+          onMouseEnter={(e) => {
+            if (!exporting && responses.length > 0) {
+              e.target.style.backgroundColor = '#1a5d38'
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!exporting && responses.length > 0) {
+              e.target.style.backgroundColor = '#217346'
+            }
+          }}
         >
-          <Download className="w-5 h-5" />
-          <span>{exporting ? 'Đang xuất...' : 'Xuất ra Excel'}</span>
+          <FileSpreadsheet className="w-5 h-5" />
+          <span>{exporting ? 'Đang xuất...' : 'Tải file Excel'}</span>
         </button>
       </div>
 
-      {/* Responses Table */}
-      {responses.length === 0 ? (
-        <div className="card text-center py-12">
-          <div className="text-gray-400 mb-4">
-            <Calendar className="w-16 h-16 mx-auto" />
-          </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Chưa có phản hồi</h3>
-          <p className="text-gray-600">
-            Chia sẻ biểu mẫu của bạn để bắt đầu thu thập phản hồi
-          </p>
-        </div>
+      {/* Tabs */}
+      <div className="mb-6 border-b border-gray-200">
+        <nav className="-mb-px flex space-x-8">
+          <button
+            onClick={() => setActiveTab('summary')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'summary'
+                ? 'border-primary-500 text-primary-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Tóm tắt
+          </button>
+          <button
+            onClick={() => setActiveTab('individual')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'individual'
+                ? 'border-primary-500 text-primary-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Cá nhân
+          </button>
+        </nav>
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === 'summary' ? (
+        <FormSummary formId={id} />
       ) : (
-        <div className="card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    ID
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Thời gian gửi
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Người dùng
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Địa chỉ IP
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Hành động
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {responses.map((response) => (
-                  <tr key={response.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      #{response.id}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {format(new Date(response.submitted_at), 'MMM dd, yyyy HH:mm')}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {response.user?.email || 'Ẩn danh'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {response.ip_address}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <div className="flex items-center justify-end space-x-2">
-                        <button
-                          onClick={() => navigate(`/forms/${id}/responses/${response.id}`)}
-                          className="text-primary-600 hover:text-primary-900"
-                          title="Xem"
-                        >
-                          <Eye className="w-5 h-5" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(response.id)}
-                          className="text-red-600 hover:text-red-900"
-                          title="Xóa"
-                        >
-                          <Trash2 className="w-5 h-5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        /* Responses Table */
+        responses.length === 0 ? (
+          <div className="card text-center py-12">
+            <div className="text-gray-400 mb-4">
+              <Calendar className="w-16 h-16 mx-auto" />
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Chưa có phản hồi</h3>
+            <p className="text-gray-600">
+              Chia sẻ biểu mẫu của bạn để bắt đầu thu thập phản hồi
+            </p>
           </div>
-        </div>
+        ) : (
+          <div className="card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      ID
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Thời gian gửi
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Người dùng
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Địa chỉ IP
+                    </th>
+                    {hasBlocks && (
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Phiên bản
+                      </th>
+                    )}
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Hành động
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {responses.map((response) => (
+                    <tr key={response.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        #{response.id}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {format(new Date(response.submitted_at), 'MMM dd, yyyy HH:mm')}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {response.user?.email || 'Ẩn danh'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {response.ip_address}
+                      </td>
+                      {hasBlocks && (
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          {assignmentSummary(fields, response).map((a) => (
+                            <div key={a.key} title={a.label}>{a.titles.join(', ')}</div>
+                          ))}
+                        </td>
+                      )}
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <div className="flex items-center justify-end space-x-2">
+                          <button
+                            onClick={() => navigate(`/forms/${id}/responses/${response.id}`)}
+                            className="text-primary-600 hover:text-primary-900"
+                            title="Xem"
+                          >
+                            <Eye className="w-5 h-5" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(response.id)}
+                            className="text-red-600 hover:text-red-900"
+                            title="Xóa"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
       )}
     </div>
   )

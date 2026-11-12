@@ -28,6 +28,7 @@ class Form extends Model
         'limit_responses',
         'max_responses',
         'require_login',
+        'respondent_limit',
         'custom_thank_you_message',
         'primary_color',
         'secondary_color',
@@ -48,6 +49,7 @@ class Form extends Model
         'limit_responses' => 'boolean',
         'require_login' => 'boolean',
         'max_responses' => 'integer',
+        'respondent_limit' => 'array',
     ];
 
     protected static function boot()
@@ -83,6 +85,11 @@ class Form extends Model
     public function responses()
     {
         return $this->hasMany(FormResponse::class);
+    }
+
+    public function sessions()
+    {
+        return $this->hasMany(FormSession::class);
     }
 
     /**

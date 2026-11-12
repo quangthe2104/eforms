@@ -150,16 +150,17 @@ export default function FormBuilder() {
     <div>
       {/* Header */}
       <div className="bg-white border-b border-gray-200 -mx-4 -mt-8 px-4 py-4 mb-6 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
+        <div className="flex flex-col gap-4">
+          {/* Title Row */}
+          <div className="flex items-center space-x-4 flex-shrink-0">
             <button
               onClick={() => navigate('/forms')}
               className="p-2 hover:bg-gray-100 rounded-lg"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">
+            <div className="flex-1 min-w-0">
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">
                 {id ? 'Sửa Biểu Mẫu' : 'Tạo Biểu Mẫu'}
               </h1>
               <p className="text-sm text-gray-600">
@@ -168,42 +169,47 @@ export default function FormBuilder() {
             </div>
           </div>
 
-          <div className="flex items-center space-x-2">
+          {/* Action Buttons Row */}
+          <div className="flex items-center flex-wrap gap-2 w-full">
             <button
               onClick={() => setShowSettings(true)}
-              className="btn btn-secondary flex items-center space-x-2"
+              className="btn btn-secondary flex items-center justify-center space-x-1 sm:space-x-2 px-3 py-2 flex-1 sm:flex-none min-w-[80px] sm:min-w-0"
+              title="Cài đặt"
             >
-              <Settings className="w-5 h-5" />
-              <span className="hidden sm:inline">Cài đặt</span>
+              <Settings className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="text-xs sm:text-sm sm:inline">Cài đặt</span>
             </button>
             <button
               onClick={() => setShowPreview(true)}
-              className="btn btn-secondary flex items-center space-x-2"
+              className="btn btn-secondary flex items-center justify-center space-x-1 sm:space-x-2 px-3 py-2 flex-1 sm:flex-none min-w-[80px] sm:min-w-0"
+              title="Xem trước"
             >
-              <Eye className="w-5 h-5" />
-              <span className="hidden sm:inline">Xem trước</span>
+              <Eye className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="text-xs sm:text-sm sm:inline">Xem trước</span>
             </button>
             {formData.status === 'published' && currentForm?.slug && (
               <button
                 onClick={handleShare}
-                className="btn btn-secondary flex items-center space-x-2"
+                className="btn btn-secondary flex items-center justify-center space-x-1 sm:space-x-2 px-3 py-2 flex-1 sm:flex-none min-w-[80px] sm:min-w-0"
+                title="Chia sẻ"
               >
-                <ExternalLink className="w-5 h-5" />
-                <span className="hidden sm:inline">Chia sẻ</span>
+                <ExternalLink className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span className="text-xs sm:text-sm sm:inline">Chia sẻ</span>
               </button>
             )}
             <button
               onClick={handleSave}
               disabled={saving}
-              className="btn btn-primary flex items-center space-x-2"
+              className="btn btn-primary flex items-center justify-center space-x-1 sm:space-x-2 px-3 py-2 flex-1 sm:flex-none min-w-[80px] sm:min-w-0"
+              title={saving ? 'Đang lưu...' : 'Lưu'}
             >
-              <Save className="w-5 h-5" />
-              <span>{saving ? 'Đang lưu...' : 'Lưu'}</span>
+              <Save className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="text-xs sm:text-sm">{saving ? 'Đang lưu...' : 'Lưu'}</span>
             </button>
             {formData.status === 'draft' && currentForm?.id && (
               <button
                 onClick={handlePublish}
-                className="btn bg-green-600 text-white hover:bg-green-700"
+                className="btn bg-green-600 text-white hover:bg-green-700 px-3 py-2 text-xs sm:text-sm flex-1 sm:flex-none min-w-[80px] sm:min-w-0"
               >
                 Xuất bản
               </button>

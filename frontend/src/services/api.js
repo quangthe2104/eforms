@@ -21,6 +21,27 @@ const getCookie = (name) => {
   return null
 }
 
+const publicHeaders = () => {
+  const token = localStorage.getItem('token')
+  return { Accept: 'application/json', ...(token && { Authorization: `Bearer ${token}` }) }
+}
+
+// Respondents may keep a form open longer than the session lives, so a 419 refreshes the CSRF cookie once.
+const publicPost = async (path, data, retried = false) => {
+  if (!getCookie('XSRF-TOKEN')) await getCsrfCookie()
+  const xsrfToken = getCookie('XSRF-TOKEN')
+  try {
+    return await axios.post(`${API_URL}${path}`, data, {
+      headers: { ...publicHeaders(), ...(xsrfToken && { 'X-XSRF-TOKEN': xsrfToken }) },
+      withCredentials: true,
+    })
+  } catch (error) {
+    if (error.response?.status !== 419 || retried) throw error
+    await getCsrfCookie()
+    return publicPost(path, data, true)
+  }
+}
+
 // Request interceptor to add token and XSRF token
 api.interceptors.request.use(
   (config) => {
@@ -111,17 +132,24 @@ export const fieldAPI = {
 // Response APIs
 export const responseAPI = {
   getAll: (formId, params) => api.get(`/forms/${formId}/responses`, { params }),
+  getSummary: (formId, variants) => api.get(`/forms/${formId}/responses/summary`, { params: variants ? { variants } : undefined }),
   getOne: (formId, responseId) => api.get(`/forms/${formId}/responses/${responseId}`),
   delete: (formId, responseId) => api.delete(`/forms/${formId}/responses/${responseId}`),
   
-  // Public APIs
-  getPublicForm: (slug) => axios.get(`${API_URL}/forms/public/${slug}`, {
+  // Public APIs (the login token is sent when present so account-based limits can recognise the user)
+  getPublicForm: (slug, params) => axios.get(`${API_URL}/forms/public/${slug}`, {
+    params,
+    headers: publicHeaders(),
     withCredentials: true,
   }),
+  assignVariants: (slug, data) => publicPost(`/forms/public/${slug}/assign`, data),
+  checkIdentity: (slug, data) => publicPost(`/forms/public/${slug}/check-identity`, data),
   submitForm: async (slug, data) => {
     await getCsrfCookie()
     
     const formData = new FormData()
+    if (data.token) formData.append('token', data.token)
+    if (data.device_id) formData.append('device_id', data.device_id)
     
     // Handle file uploads
     Object.keys(data.answers).forEach(fieldId => {
@@ -144,6 +172,7 @@ export const responseAPI = {
       headers: {
         'Content-Type': 'multipart/form-data',
         ...(xsrfToken && { 'X-XSRF-TOKEN': xsrfToken }),
+        ...publicHeaders(),
       },
       withCredentials: true,
     })

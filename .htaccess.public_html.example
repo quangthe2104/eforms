@@ -1,0 +1,48 @@
+# Force PHP 8.3
+AddHandler application/x-httpd-ea-php83 .php
+
+# Disable directory listing
+Options -Indexes
+
+# Set directory index
+DirectoryIndex frontend/dist/index.html index.html index.php
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Handle Authorization Header
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    # Route /storage/thumbnails to Laravel backend
+    RewriteCond %{REQUEST_URI} ^/storage/thumbnails/(.*)$
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteRule ^storage/thumbnails/(.*)$ /backend/public/index.php [L]
+
+    # Route /sanctum/csrf-cookie to Laravel backend
+    RewriteCond %{REQUEST_URI} ^/sanctum/
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteRule ^sanctum/(.*)$ /backend/public/index.php [L]
+
+    # Route /api to Laravel backend
+    RewriteCond %{REQUEST_URI} ^/api/
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteRule ^api/(.*)$ /backend/public/index.php [L]
+
+    # Serve static files from frontend/dist
+    RewriteCond %{REQUEST_FILENAME} -f
+    RewriteCond %{REQUEST_URI} \.(css|js|jpg|jpeg|png|gif|ico|svg|woff|woff2|ttf|eot)$ [NC]
+    RewriteRule ^(.*)$ /frontend/dist/$1 [L]
+
+    # Route all other requests to frontend
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_URI} !^/backend/
+    RewriteCond %{REQUEST_URI} !^/api/
+    RewriteCond %{REQUEST_URI} !^/sanctum/
+    RewriteCond %{REQUEST_URI} !^/storage/
+    RewriteRule ^(.*)$ /frontend/dist/$1 [L]
+</IfModule>
+
+
+

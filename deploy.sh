@@ -17,12 +17,12 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration - THAY ĐỔI CÁC THÔNG TIN NÀY
-DOMAIN="eforms.domain.com"  # Thay bằng domain của bạn
-DB_NAME="eforms_production"
-DB_USER="eforms_user"
+DOMAIN="ksxh.vn"  # Thay bằng domain của bạn
+DB_NAME="ksxh_eforms"
+DB_USER="ksxh_eforms"
 DB_PASS=""  # Sẽ hỏi khi chạy
-PROJECT_DIR="/var/www/eforms"  # Đường dẫn project
-PHP_VERSION="8.2"
+PROJECT_DIR="/home/ksxh/public_html"  # Đường dẫn project
+PHP_VERSION="8.3"
 
 # Functions
 print_header() {
@@ -86,7 +86,7 @@ step_install_dependencies() {
     
     cd "$PROJECT_DIR/frontend"
     print_info "Đang cài đặt NPM dependencies..."
-    npm install --production
+    npm install
     print_success "Đã cài đặt NPM dependencies"
 }
 
@@ -97,14 +97,78 @@ step_setup_backend_env() {
     cd "$PROJECT_DIR/backend"
     
     if [ ! -f .env ]; then
-        print_info "Tạo file .env từ .env.example..."
-        cp .env.example .env
-        print_success "Đã tạo file .env"
+        if [ -f .env.example ]; then
+            print_info "Tạo file .env từ .env.example..."
+            cp .env.example .env
+            print_success "Đã tạo file .env"
+        else
+            print_warning ".env.example không tồn tại, tạo file .env mới..."
+            # Extract domain base for SESSION_DOMAIN
+            DOMAIN_BASE=$(echo $DOMAIN | sed 's/^[^.]*\.//')
+            
+            # Tạo file .env mới với các giá trị mặc định
+            cat > .env << EOF
+APP_NAME=eForms
+APP_ENV=production
+APP_KEY=
+APP_DEBUG=false
+APP_URL=https://$DOMAIN
+
+LOG_CHANNEL=stack
+LOG_DEPRECATIONS_CHANNEL=null
+LOG_LEVEL=error
+
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=$DB_NAME
+DB_USERNAME=$DB_USER
+DB_PASSWORD=$DB_PASS
+
+BROADCAST_DRIVER=log
+CACHE_DRIVER=file
+FILESYSTEM_DISK=local
+QUEUE_CONNECTION=sync
+SESSION_DRIVER=file
+SESSION_LIFETIME=120
+
+MEMCACHED_HOST=127.0.0.1
+
+REDIS_HOST=127.0.0.1
+REDIS_PASSWORD=null
+REDIS_PORT=6379
+
+MAIL_MAILER=smtp
+MAIL_HOST=mailpit
+MAIL_PORT=1025
+MAIL_USERNAME=null
+MAIL_PASSWORD=null
+MAIL_ENCRYPTION=null
+MAIL_FROM_ADDRESS="hello@example.com"
+MAIL_FROM_NAME="\${APP_NAME}"
+
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_DEFAULT_REGION=us-east-1
+AWS_BUCKET=
+AWS_USE_PATH_STYLE_ENDPOINT=false
+
+VITE_APP_NAME="\${APP_NAME}"
+
+SANCTUM_STATEFUL_DOMAINS=$DOMAIN
+SESSION_DOMAIN=.$DOMAIN_BASE
+SESSION_SECURE_COOKIE=true
+SESSION_SAME_SITE=lax
+
+FRONTEND_URL=https://$DOMAIN
+EOF
+            print_success "Đã tạo file .env mới"
+        fi
     else
-        print_warning "File .env đã tồn tại, bỏ qua..."
+        print_warning "File .env đã tồn tại, cập nhật các giá trị..."
     fi
     
-    # Update .env with production values
+    # Update .env with production values (in case file already exists)
     print_info "Cập nhật .env với thông tin production..."
     
     sed -i "s|APP_ENV=.*|APP_ENV=production|g" .env
@@ -113,7 +177,9 @@ step_setup_backend_env() {
     
     sed -i "s|DB_DATABASE=.*|DB_DATABASE=$DB_NAME|g" .env
     sed -i "s|DB_USERNAME=.*|DB_USERNAME=$DB_USER|g" .env
-    sed -i "s|DB_PASSWORD=.*|DB_PASSWORD=$DB_PASS|g" .env
+    # Escape special characters in password for sed
+    ESCAPED_PASS=$(printf '%s\n' "$DB_PASS" | sed 's/[[\.*^$()+?{|]/\\&/g')
+    sed -i "s|DB_PASSWORD=.*|DB_PASSWORD=$ESCAPED_PASS|g" .env
     
     # Extract domain without subdomain for SESSION_DOMAIN
     DOMAIN_BASE=$(echo $DOMAIN | sed 's/^[^.]*\.//')
@@ -150,10 +216,34 @@ EOF
 
 # Step 4: Setup database
 step_setup_database() {
-    print_header "Bước 4: Tạo Database"
+    print_header "Bước 4: Kiểm tra Database"
     
-    print_info "Tạo database và user..."
+    # Check if database already exists using the provided credentials
+    print_info "Kiểm tra database đã tồn tại..."
     
+    # Try to connect to database with provided credentials
+    if mysql -u "$DB_USER" -p"$DB_PASS" -h 127.0.0.1 -e "USE $DB_NAME;" 2>/dev/null; then
+        print_success "Database '$DB_NAME' đã tồn tại và user '$DB_USER' đã có quyền truy cập"
+        print_info "Bỏ qua bước tạo database"
+        return 0
+    fi
+    
+    # Database doesn't exist or user doesn't have access
+    print_warning "Database chưa tồn tại hoặc user chưa có quyền truy cập"
+    print_info "Bạn có muốn tạo database ngay bây giờ? (y/n)"
+    read -p "Nhập lựa chọn: " create_db
+    
+    if [ "$create_db" != "y" ] && [ "$create_db" != "Y" ]; then
+        print_info "Bỏ qua tạo database. Vui lòng tạo database thủ công:"
+        print_info "  CREATE DATABASE $DB_NAME CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+        print_info "  CREATE USER '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASS';"
+        print_info "  GRANT ALL PRIVILEGES ON $DB_NAME.* TO '$DB_USER'@'localhost';"
+        print_info "  FLUSH PRIVILEGES;"
+        return 0
+    fi
+    
+    # Try to create database (will prompt for root password)
+    print_info "Cần password MySQL root để tạo database..."
     mysql -u root -p <<EOF
 CREATE DATABASE IF NOT EXISTS $DB_NAME CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASS';
@@ -161,7 +251,11 @@ GRANT ALL PRIVILEGES ON $DB_NAME.* TO '$DB_USER'@'localhost';
 FLUSH PRIVILEGES;
 EOF
     
-    print_success "Đã tạo database: $DB_NAME"
+    if [ $? -eq 0 ]; then
+        print_success "Đã tạo database: $DB_NAME"
+    else
+        print_error "Không thể tạo database. Vui lòng tạo thủ công."
+    fi
 }
 
 # Step 5: Laravel setup
@@ -179,10 +273,40 @@ step_laravel_setup() {
         print_warning "APP_KEY đã có, bỏ qua..."
     fi
     
+    # Test database connection before migrations
+    print_info "Kiểm tra kết nối database..."
+    
+    # Read database config from .env
+    DB_HOST_ENV=$(grep "^DB_HOST=" .env | cut -d'=' -f2 | tr -d ' ')
+    DB_PORT_ENV=$(grep "^DB_PORT=" .env | cut -d'=' -f2 | tr -d ' ')
+    DB_DATABASE_ENV=$(grep "^DB_DATABASE=" .env | cut -d'=' -f2 | tr -d ' ')
+    DB_USERNAME_ENV=$(grep "^DB_USERNAME=" .env | cut -d'=' -f2 | tr -d ' ')
+    DB_PASSWORD_ENV=$(grep "^DB_PASSWORD=" .env | cut -d'=' -f2- | tr -d ' ')
+    
+    # Test connection with mysql command
+    if mysql -u "$DB_USERNAME_ENV" -p"$DB_PASSWORD_ENV" -h "${DB_HOST_ENV:-127.0.0.1}" -P "${DB_PORT_ENV:-3306}" -e "USE $DB_DATABASE_ENV;" 2>/dev/null; then
+        print_success "Kết nối database thành công"
+    else
+        print_error "Không thể kết nối database!"
+        print_warning "Vui lòng kiểm tra lại thông tin trong file .env:"
+        print_info "  DB_HOST=$DB_HOST_ENV"
+        print_info "  DB_DATABASE=$DB_DATABASE_ENV"
+        print_info "  DB_USERNAME=$DB_USERNAME_ENV"
+        print_warning "Kiểm tra password có đúng không bằng lệnh:"
+        print_info "  mysql -u $DB_USERNAME_ENV -p -h ${DB_HOST_ENV:-127.0.0.1} -e 'USE $DB_DATABASE_ENV;'"
+        print_warning "Nếu vẫn lỗi, vui lòng kiểm tra lại password trong file .env"
+        exit 1
+    fi
+    
     # Run migrations
     print_info "Chạy migrations..."
     php artisan migrate --force
-    print_success "Đã chạy migrations"
+    if [ $? -eq 0 ]; then
+        print_success "Đã chạy migrations"
+    else
+        print_error "Lỗi khi chạy migrations. Vui lòng kiểm tra lại thông tin database trong .env"
+        exit 1
+    fi
     
     # Create storage link
     print_info "Tạo storage link..."
@@ -195,11 +319,20 @@ step_laravel_setup() {
     print_success "Đã tạo thư mục thumbnails"
     
     # Cache config
-    print_info "Cache config, routes, views..."
+    print_info "Cache config, routes..."
     php artisan config:cache
     php artisan route:cache
-    php artisan view:cache
-    print_success "Đã cache config"
+    
+    # Only cache views if resources/views directory exists
+    if [ -d "resources/views" ] && [ "$(ls -A resources/views 2>/dev/null)" ]; then
+        print_info "Cache views..."
+        php artisan view:cache
+        print_success "Đã cache views"
+    else
+        print_warning "Thư mục resources/views không tồn tại, bỏ qua cache views (API-only app)"
+    fi
+    
+    print_success "Đã cache config và routes"
 }
 
 # Step 6: Build frontend
@@ -208,9 +341,21 @@ step_build_frontend() {
     
     cd "$PROJECT_DIR/frontend"
     
+    # Check if node_modules exists and vite is installed
+    if [ ! -d "node_modules" ] || [ ! -f "node_modules/.bin/vite" ]; then
+        print_warning "Vite chưa được cài đặt, đang cài đặt dependencies..."
+        npm install
+    fi
+    
     print_info "Đang build frontend (có thể mất vài phút)..."
     npm run build
-    print_success "Đã build frontend thành công"
+    
+    if [ $? -eq 0 ]; then
+        print_success "Đã build frontend thành công"
+    else
+        print_error "Lỗi khi build frontend. Vui lòng kiểm tra lại."
+        exit 1
+    fi
 }
 
 # Step 7: Set permissions

@@ -12,6 +12,7 @@ class ResponseAnswer extends Model
     protected $fillable = [
         'response_id',
         'field_id',
+        'variant_key',
         'value',
         'file_path',
     ];

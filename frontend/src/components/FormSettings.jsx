@@ -1,7 +1,38 @@
 import { useState } from 'react'
-import { X } from 'lucide-react'
+import { X, Plus } from 'lucide-react'
+import toast from 'react-hot-toast'
+import { useFormStore } from '../store/formStore'
+import { newKey, shortLabel } from '../utils/formStructure'
+
+const LIMIT_METHODS = [
+  { value: 'device', label: 'Mã thiết bị ẩn danh', hint: 'Lưu trong trình duyệt; người cố tình vẫn lách được bằng tab ẩn danh hoặc trình duyệt khác.' },
+  { value: 'email', label: 'Email', hint: 'Lấy từ một câu Email trong biểu mẫu.' },
+  { value: 'phone', label: 'Số điện thoại', hint: 'Lấy từ một câu Số điện thoại (di động Việt Nam 10 chữ số).' },
+  { value: 'account', label: 'Tài khoản đăng nhập', hint: 'Tự bật "Yêu cầu đăng nhập".' },
+]
+
+const IDENTITY_FIELDS = {
+  email: { type: 'email', label: 'Email (chỉ dùng để tránh trả lời trùng)' },
+  phone: { type: 'phone', label: 'Số điện thoại (chỉ dùng để tránh trả lời trùng)' },
+}
+
+const DEFAULT_LIMIT = {
+  enabled: false,
+  methods: ['device'],
+  field_keys: { email: null, phone: null },
+  match: 'any',
+  max_per_person: 1,
+  on_limit: 'block',
+  message: 'Bạn đã trả lời biểu mẫu này. Xin cảm ơn!',
+}
 
 export default function FormSettings({ form, onClose, onSave }) {
+  const fields = useFormStore((s) => s.fields)
+  const insertFields = useFormStore((s) => s.insertFields)
+  const [limit, setLimit] = useState(() => {
+    const saved = form?.respondent_limit && !Array.isArray(form.respondent_limit) ? form.respondent_limit : {}
+    return { ...DEFAULT_LIMIT, ...saved, field_keys: { ...DEFAULT_LIMIT.field_keys, ...(saved.field_keys || {}) } }
+  })
   const [settings, setSettings] = useState({
     is_public: form?.is_public ?? true,
     accept_responses: form?.accept_responses ?? true,
@@ -13,8 +44,62 @@ export default function FormSettings({ form, onClose, onSave }) {
     custom_thank_you_message: form?.custom_thank_you_message ?? '',
   })
 
+  const methods = limit.methods || []
+  const usesAccount = limit.enabled && methods.includes('account')
+  const candidates = (type) => fields.filter((f) => f.type === type && !f.random_group_key)
+
+  const updateLimit = (patch) => setLimit((prev) => ({ ...prev, ...patch }))
+
+  const toggleMethod = (method, checked) => {
+    const nextMethods = checked ? [...methods, method] : methods.filter((m) => m !== method)
+    const patch = { methods: nextMethods }
+    if (checked && IDENTITY_FIELDS[method] && !limit.field_keys?.[method]) {
+      const options = candidates(IDENTITY_FIELDS[method].type)
+      if (options.length === 1) patch.field_keys = { ...limit.field_keys, [method]: options[0].key }
+    }
+    updateLimit(patch)
+  }
+
+  const addIdentityField = (method) => {
+    const key = newKey()
+    // Right after the first page break when the form opens with one, so it stays on page 1.
+    const at = fields[0]?.type === 'section' ? 1 : 0
+    insertFields(at, [{ ...IDENTITY_FIELDS[method], key, is_required: true, placeholder: '', help_text: '' }])
+    updateLimit({ field_keys: { ...limit.field_keys, [method]: key } })
+    toast.success('Đã thêm câu hỏi vào trang đầu. Biểu mẫu sẽ được lưu cùng cài đặt.')
+  }
+
+  const limitError = () => {
+    if (!limit.enabled) return null
+    if (!methods.length) return 'Chọn ít nhất một căn cứ nhận diện người trả lời.'
+    for (const method of ['email', 'phone']) {
+      if (!methods.includes(method)) continue
+      const key = limit.field_keys?.[method]
+      if (!key || !fields.some((f) => f.key === key && f.type === IDENTITY_FIELDS[method].type)) {
+        return `Chọn câu hỏi ${method === 'email' ? 'Email' : 'Số điện thoại'} dùng làm căn cứ.`
+      }
+    }
+    return null
+  }
+
   const handleSave = () => {
-    onSave(settings)
+    const error = limitError()
+    if (error) {
+      toast.error(error)
+      return
+    }
+    const fieldKeys = Object.fromEntries(
+      Object.entries(limit.field_keys || {}).map(([m, k]) => [m, methods.includes(m) ? k : null])
+    )
+    onSave({
+      ...settings,
+      require_login: settings.require_login || usesAccount,
+      respondent_limit: {
+        ...limit,
+        field_keys: fieldKeys,
+        max_per_person: Math.max(1, parseInt(limit.max_per_person, 10) || 1),
+      },
+    })
   }
 
   return (
@@ -97,13 +182,18 @@ export default function FormSettings({ form, onClose, onSave }) {
             <label className="flex items-center space-x-3 cursor-pointer">
               <input
                 type="checkbox"
-                checked={settings.require_login}
+                checked={settings.require_login || usesAccount}
+                disabled={usesAccount}
                 onChange={(e) => setSettings({ ...settings, require_login: e.target.checked })}
                 className="w-5 h-5 text-primary-600 rounded"
               />
               <div>
                 <div className="font-medium text-gray-900">Yêu Cầu Đăng Nhập</div>
-                <div className="text-sm text-gray-600">Chỉ người dùng đã đăng nhập mới có thể gửi</div>
+                <div className="text-sm text-gray-600">
+                  {usesAccount
+                    ? 'Đang bật vì "Giới hạn mỗi người trả lời" dùng căn cứ Tài khoản đăng nhập'
+                    : 'Chỉ người dùng đã đăng nhập mới có thể gửi'}
+                </div>
               </div>
             </label>
           </div>
@@ -132,6 +222,139 @@ export default function FormSettings({ form, onClose, onSave }) {
                   className="input"
                   min="1"
                 />
+              </div>
+            )}
+          </div>
+
+          {/* Limit per respondent */}
+          <div>
+            <label className="flex items-center space-x-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!limit.enabled}
+                onChange={(e) => updateLimit({ enabled: e.target.checked })}
+                className="w-5 h-5 text-primary-600 rounded"
+              />
+              <div>
+                <div className="font-medium text-gray-900">Giới Hạn Mỗi Người Trả Lời</div>
+                <div className="text-sm text-gray-600">Nhận diện người đã trả lời để chặn trả lời trùng (độc lập với giới hạn tổng số phản hồi)</div>
+              </div>
+            </label>
+
+            {limit.enabled && (
+              <div className="mt-3 ml-8 space-y-4">
+                <div>
+                  <div className="form-label">Căn cứ nhận diện</div>
+                  <div className="space-y-2">
+                    {LIMIT_METHODS.map((m) => {
+                      const checked = methods.includes(m.value)
+                      const identity = IDENTITY_FIELDS[m.value]
+                      const options = identity ? candidates(identity.type) : []
+                      const selectedKey = limit.field_keys?.[m.value] || ''
+                      const selected = options.find((f) => f.key === selectedKey)
+                      return (
+                        <div key={m.value}>
+                          <label className="flex items-start gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              className="mt-1"
+                              checked={checked}
+                              onChange={(e) => toggleMethod(m.value, e.target.checked)}
+                            />
+                            <span>
+                              <span className="text-sm font-medium text-gray-900">{m.label}</span>
+                              <span className="block text-xs text-gray-500">{m.hint}</span>
+                            </span>
+                          </label>
+                          {checked && identity && (
+                            <div className="ml-6 mt-1 space-y-1">
+                              {options.length > 0 && (
+                                <select
+                                  className="input py-1 text-sm"
+                                  value={selectedKey}
+                                  onChange={(e) => updateLimit({ field_keys: { ...limit.field_keys, [m.value]: e.target.value || null } })}
+                                >
+                                  <option value="">Chọn câu hỏi…</option>
+                                  {options.map((f) => (
+                                    <option key={f.key} value={f.key}>{shortLabel(f)}</option>
+                                  ))}
+                                </select>
+                              )}
+                              {options.length === 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => addIdentityField(m.value)}
+                                  className="flex items-center gap-1 text-sm text-primary-600 hover:text-primary-700"
+                                >
+                                  <Plus className="w-4 h-4" /> Thêm câu {m.label} vào trang đầu
+                                </button>
+                              )}
+                              {selected && !selected.is_required && (
+                                <p className="text-xs text-amber-600">
+                                  Câu này không bắt buộc: người trả lời để trống thì căn cứ này được bỏ qua.
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {methods.length > 1 && (
+                  <div>
+                    <div className="form-label">Khi có nhiều căn cứ</div>
+                    <select className="input" value={limit.match} onChange={(e) => updateLimit({ match: e.target.value })}>
+                      <option value="any">Chặn khi trùng bất kỳ căn cứ nào</option>
+                      <option value="all">Chỉ chặn khi trùng tất cả căn cứ</option>
+                    </select>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-3">
+                  <label className="form-label mb-0">Số lần mỗi người được trả lời</label>
+                  <input
+                    type="number"
+                    min="1"
+                    className="input w-24"
+                    value={limit.max_per_person}
+                    onChange={(e) => updateLimit({ max_per_person: e.target.value })}
+                  />
+                </div>
+
+                <div>
+                  <div className="form-label">Khi đã đủ số lần</div>
+                  <div className="space-y-2">
+                    <label className="flex items-start gap-2 cursor-pointer">
+                      <input type="radio" className="mt-1" checked={limit.on_limit === 'block'} onChange={() => updateLimit({ on_limit: 'block' })} />
+                      <span className="text-sm text-gray-900">Chặn và hiện thông báo</span>
+                    </label>
+                    <label className="flex items-start gap-2 cursor-pointer">
+                      <input type="radio" className="mt-1" checked={limit.on_limit === 'edit'} onChange={() => updateLimit({ on_limit: 'edit' })} />
+                      <span>
+                        <span className="text-sm text-gray-900">Cho sửa câu trả lời gần nhất</span>
+                        <span className="block text-xs text-gray-500">
+                          Khớp theo thiết bị/tài khoản thì nạp lại câu trả lời cũ để sửa. Khớp theo email/điện thoại thì người trả lời
+                          điền lại từ đầu và bản mới thay bản cũ (không hiện câu trả lời cũ để bảo vệ dữ liệu).
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                {limit.on_limit === 'block' && (
+                  <div>
+                    <label className="form-label">Nội dung thông báo khi bị chặn</label>
+                    <textarea
+                      className="input"
+                      rows="2"
+                      value={limit.message || ''}
+                      onChange={(e) => updateLimit({ message: e.target.value })}
+                      placeholder={DEFAULT_LIMIT.message}
+                    />
+                  </div>
+                )}
               </div>
             )}
           </div>

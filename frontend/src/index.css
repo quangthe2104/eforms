@@ -221,6 +221,27 @@
   @apply flex items-center space-x-4 mb-4;
 }
 
+/* Random section blocks */
+.eforms-block-member {
+  @apply ml-4 pl-3 border-l-4 border-dashed;
+}
+
+.eforms-block-footer {
+  @apply ml-4 flex flex-wrap items-center justify-between gap-2 rounded-b-lg border-l-4 border-dashed bg-white/70 px-4 py-2;
+}
+
+.eforms-variant-tab {
+  @apply rounded-full border border-gray-300 px-3 py-1 text-sm text-gray-700 hover:bg-gray-50;
+}
+
+.eforms-chip {
+  @apply inline-block rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600;
+}
+
+.eforms-adv-input {
+  @apply rounded border border-gray-300 bg-white px-2 py-1 text-sm focus:border-primary-500 focus:outline-none;
+}
+
 .eforms-question-input {
   @apply flex-1 text-base font-normal text-gray-900 bg-transparent outline-none cursor-text;
   border: none;
@@ -420,11 +441,42 @@
   }
   
   .eforms-sidebar {
-    @apply sticky top-4 self-center;
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: auto !important;
+    z-index: 50;
+    padding: 8px;
+    background: transparent;
+    pointer-events: none;
   }
   
   .eforms-sidebar-content {
-    @apply flex-row space-y-0 space-x-1;
+    @apply flex-row space-y-0 space-x-2 p-3 shadow-xl mx-auto;
+    border-radius: 12px 12px 0 0;
+    white-space: nowrap;
+    max-width: fit-content;
+    background: white;
+    border: 1px solid rgba(229, 231, 235, 1);
+    border-bottom: none;
+    pointer-events: auto;
+  }
+  
+  .eforms-sidebar-btn {
+    @apply w-14 h-14 min-w-[56px] min-h-[56px] flex-shrink-0;
+  }
+  
+  .eforms-sidebar-btn svg {
+    @apply w-6 h-6;
+  }
+  
+  .eforms-sidebar-divider {
+    @apply w-px h-6 bg-gray-300 my-auto mx-0;
+  }
+  
+  .eforms-sidebar-text-btn span {
+    @apply text-xl;
   }
 }
 

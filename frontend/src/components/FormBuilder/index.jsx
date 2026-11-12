@@ -4,11 +4,17 @@ import { formAPI, fieldAPI } from '../../services/api'
 import { useFormStore } from '../../store/formStore'
 import { useFormBuilder } from '../../contexts/FormBuilderContext'
 import toast from 'react-hot-toast'
+import { Settings, Eye, Save, BarChart3, Share2 } from 'lucide-react'
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
-import { arrayMove, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import EditableTitle from './EditableTitle'
 import FormQuestion from './FormQuestion'
 import FormSidebar from './FormSidebar'
+import RandomSectionCard, { BlockFooter } from './RandomSectionCard'
+import {
+  moveField, insertionPoint, isHiddenInBuilder, currentVariant, isDifferentMode, findHeader,
+  blockEnd, destructiveChanges, shortLabel,
+} from '../../utils/formStructure'
 import FormPreview from '../FormPreview'
 import FormSettings from '../FormSettings'
 import FormTheme from '../FormTheme'
@@ -17,7 +23,9 @@ import { captureFormThumbnail } from '../../utils/captureFormThumbnail'
 export default function FormBuilder() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { currentForm, setCurrentForm, fields, reorderFields, isDirty, markAsSaved, resetForm } = useFormStore()
+  const { currentForm, setCurrentForm, fields, reorderFields, insertFields, applySavedFields, markAsSaved, resetForm } = useFormStore()
+  const [activeTabs, setActiveTabs] = useState({})
+  const hasResponses = (currentForm?.responses?.length || 0) > 0
   const { setFormBuilderActions } = useFormBuilder()
   
   const [loading, setLoading] = useState(true)
@@ -127,18 +135,30 @@ export default function FormBuilder() {
   const handleSave = async () => {
     if (!formData.title.trim()) {
       toast.error('Vui lòng nhập tiêu đề biểu mẫu')
-      return
+      return false
     }
 
     if (saving) {
-      return
+      return false
+    }
+
+    // Get FRESH state from store at save time
+    const { fields: currentFields, isDirty: currentIsDirty, currentForm: latestForm } = useFormStore.getState()
+
+    if (currentIsDirty && (latestForm?.responses?.length || 0) > 0) {
+      const changes = destructiveChanges(latestForm.fields, currentFields)
+      if (changes.length) {
+        const list = changes.slice(0, 8).map((c) => `• ${c}`).join('\n')
+        const more = changes.length > 8 ? `\n• … và ${changes.length - 8} thay đổi khác` : ''
+        const ok = confirm(
+          `Biểu mẫu đã có ${latestForm.responses.length} câu trả lời. Các thay đổi sau có thể làm mất hoặc lệch dữ liệu đã thu:\n\n${list}${more}\n\nVẫn lưu?`
+        )
+        if (!ok) return false
+      }
     }
 
     setSaving(true)
     try {
-      // Get FRESH state from store at save time
-      const { fields: currentFields, isDirty: currentIsDirty } = useFormStore.getState()
-      
       let form = currentForm
 
       // Prepare theme data - Read from localStorage to avoid race condition
@@ -213,6 +233,7 @@ export default function FormBuilder() {
       // Build complete form object with fields and theme
       const completeForm = {
         ...form,
+        responses: latestForm?.responses,
         fields: savedFields,
         ...themeData, // Ensure theme data is included
       }
@@ -226,9 +247,13 @@ export default function FormBuilder() {
         }
       }
       
-      // Update form state with fields and theme - this will sync to store
-      setCurrentForm(completeForm)
-      markAsSaved()
+      // New fields only get their database ids here; without them the next save would recreate them.
+      if (currentIsDirty) {
+        applySavedFields(completeForm, savedFields, currentFields)
+      } else {
+        setCurrentForm(completeForm)
+        markAsSaved()
+      }
 
       toast.success('Đã lưu biểu mẫu thành công')
 
@@ -253,9 +278,24 @@ export default function FormBuilder() {
           console.error('Error capturing thumbnail:', error)
         }
       }, 500)
+      return true
     } catch (error) {
       console.error('Error saving form:', error)
-      toast.error('Không thể lưu biểu mẫu')
+      const errors = error.response?.status === 422 ? error.response.data?.errors : null
+      if (errors) {
+        const entries = Object.entries(errors)
+        const lines = entries.slice(0, 3).map(([path, messages]) => {
+          const match = path.match(/^fields\.(\d+)\./)
+          const field = match ? currentFields[Number(match[1])] : null
+          return field ? `"${shortLabel(field, 40)}": ${messages[0]}` : messages[0]
+        })
+        toast.error(`Không thể lưu biểu mẫu:\n${lines.join('\n')}`, { duration: 8000 })
+        const first = entries[0]?.[0].match(/^fields\.(\d+)\./)
+        if (first) setActiveQuestionIndex(Number(first[1]))
+      } else {
+        toast.error('Không thể lưu biểu mẫu')
+      }
+      return false
     } finally {
       setSaving(false)
     }
@@ -326,21 +366,33 @@ export default function FormBuilder() {
       return
     }
 
+    // The respondent limit may point at questions that exist only in the builder so far.
+    if (useFormStore.getState().isDirty && !(await handleSave())) {
+      return
+    }
+    const latest = useFormStore.getState().currentForm || currentForm
+
     try {
       // Preserve theme when saving settings
       const updateData = {
         ...settings,
-        primary_color: currentForm.primary_color,
-        secondary_color: currentForm.secondary_color,
-        background_color: currentForm.background_color,
-        header_image: currentForm.header_image,
-        font_family: currentForm.font_family,
-        header_font_size: currentForm.header_font_size,
-        question_font_size: currentForm.question_font_size,
-        text_font_size: currentForm.text_font_size,
+        primary_color: latest.primary_color,
+        secondary_color: latest.secondary_color,
+        background_color: latest.background_color,
+        header_image: latest.header_image,
+        font_family: latest.font_family,
+        header_font_size: latest.header_font_size,
+        question_font_size: latest.question_font_size,
+        text_font_size: latest.text_font_size,
       }
-      await formAPI.update(currentForm.id, updateData)
-      setCurrentForm({ ...currentForm, ...settings })
+      const response = await formAPI.update(latest.id, updateData)
+      const saved = response.data.form || {}
+      setCurrentForm({
+        ...latest,
+        ...settings,
+        require_login: saved.require_login ?? settings.require_login,
+        respondent_limit: saved.respondent_limit ?? settings.respondent_limit,
+      })
       toast.success('Đã lưu cài đặt biểu mẫu')
       setShowSettings(false)
     } catch (error) {
@@ -397,13 +449,47 @@ export default function FormBuilder() {
 
   const handleDragEnd = (event) => {
     const { active, over } = event
+    if (!over || active.id === over.id) return
 
-    if (active.id !== over.id) {
-      const oldIndex = fields.findIndex((f, i) => i === active.id)
-      const newIndex = fields.findIndex((f, i) => i === over.id)
-      reorderFields(arrayMove(fields, oldIndex, newIndex))
+    const next = moveField(fields, active.id, over.id, activeTabs)
+    if (next !== fields) {
+      reorderFields(next)
+      setActiveQuestionIndex(next.findIndex((f) => f.key === active.id))
     }
   }
+
+  const focusNewField = (at, key) => {
+    setActiveQuestionIndex(at)
+    setTimeout(() => {
+      document.querySelector(`[data-field-key="${key}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 100)
+  }
+
+  /** Inserts after the active item; plain items join the active item's random section. */
+  const insertItems = (items, { isBlock = false } = {}) => {
+    const current = useFormStore.getState().fields
+    const { at, groupKey, variantKey } = insertionPoint(current, activeQuestionIndex, activeTabs, { isBlock })
+    const prepared = isBlock ? items : items.map((item) => ({ ...item, random_group_key: groupKey, variant_key: variantKey }))
+    insertFields(at, prepared)
+    focusNewField(at, useFormStore.getState().fields[at]?.key)
+  }
+
+  const addToBlock = (header, type) => {
+    const current = useFormStore.getState().fields
+    const at = blockEnd(current, current.findIndex((f) => f.key === header.key)) + 1
+    const base = type === 'section'
+      ? { type: 'section', label: 'Trang tiếp theo của phần', description: '' }
+      : { type: 'radio', label: 'Câu hỏi', options: ['Tùy chọn 1'], placeholder: '', help_text: '' }
+    insertFields(at, [{
+      ...base,
+      is_required: false,
+      random_group_key: header.key,
+      variant_key: isDifferentMode(header) ? currentVariant(header, activeTabs) : null,
+    }])
+    focusNewField(at, useFormStore.getState().fields[at]?.key)
+  }
+
+  const visibleKeys = fields.filter((f) => !isHiddenInBuilder(f, fields, activeTabs)).map((f) => f.key)
 
   const handleTitleChange = (data) => {
     setFormData(prev => ({
@@ -423,12 +509,13 @@ export default function FormBuilder() {
 
   return (
     <div 
-      className="min-h-screen"
+      className="min-h-screen pb-24 md:pb-0"
       style={{
         backgroundColor: currentTheme.background_color,
         fontFamily: currentTheme.font_family,
       }}
     >
+
       {/* Main Content */}
       <div 
         className="eforms-content"
@@ -464,18 +551,64 @@ export default function FormBuilder() {
               collisionDetection={closestCenter}
               onDragEnd={handleDragEnd}
             >
-              <SortableContext items={fields.map((_, i) => i)} strategy={verticalListSortingStrategy}>
+              <SortableContext items={visibleKeys} strategy={verticalListSortingStrategy}>
                 <div className="space-y-3">
-                  {fields.map((field, index) => (
-                    <FormQuestion
-                      key={index}
-                      field={field}
-                      index={index}
-                      isActive={activeQuestionIndex === index}
-                      onClick={() => setActiveQuestionIndex(index)}
-                      theme={currentTheme}
-                    />
-                  ))}
+                  {fields.map((field, index) => {
+                    const groupKey = field.type === 'random_section' ? field.key : field.random_group_key
+                    const header = groupKey ? findHeader(fields, groupKey) : null
+                    const closesBlock = header && fields[index + 1]?.random_group_key !== groupKey
+                    const hidden = isHiddenInBuilder(field, fields, activeTabs)
+
+                    let card = null
+                    if (!hidden && field.type === 'random_section') {
+                      card = (
+                        <RandomSectionCard
+                          field={field}
+                          index={index}
+                          isActive={activeQuestionIndex === index}
+                          onClick={() => setActiveQuestionIndex(index)}
+                          theme={currentTheme}
+                          activeVariant={currentVariant(field, activeTabs)}
+                          onSelectVariant={(variantKey) => setActiveTabs((tabs) => ({ ...tabs, [field.key]: variantKey }))}
+                          hasResponses={hasResponses}
+                        />
+                      )
+                    } else if (!hidden) {
+                      const question = (
+                        <FormQuestion
+                          field={field}
+                          index={index}
+                          isActive={activeQuestionIndex === index}
+                          onClick={() => setActiveQuestionIndex(index)}
+                          theme={currentTheme}
+                        />
+                      )
+                      card = header ? (
+                        <div className="eforms-block-member" style={{ borderColor: currentTheme.primary_color }}>
+                          {isDifferentMode(header) && !field.variant_key && (
+                            <div className="eforms-chip mb-1">Dùng chung cho mọi phiên bản</div>
+                          )}
+                          {question}
+                        </div>
+                      ) : question
+                    }
+
+                    return (
+                      <div key={field.key} data-field-key={field.key} className={hidden && !closesBlock ? 'hidden' : undefined}>
+                        {card}
+                        {closesBlock && (
+                          <div className={card ? 'mt-3' : undefined}>
+                            <BlockFooter
+                              header={header}
+                              theme={currentTheme}
+                              onAddQuestion={() => addToBlock(header, 'question')}
+                              onAddPageBreak={() => addToBlock(header, 'section')}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               </SortableContext>
             </DndContext>
@@ -498,7 +631,7 @@ export default function FormBuilder() {
         </div>
 
         {/* Sidebar */}
-        <FormSidebar />
+        <FormSidebar onInsert={insertItems} />
       </div>
 
       {/* Preview Modal */}

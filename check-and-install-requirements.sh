@@ -75,6 +75,16 @@ detect_os() {
         . /etc/os-release
         OS=$ID
         OS_VERSION=$VERSION_ID
+        
+        # Handle CentOS/RHEL variations
+        if [ "$OS" = "rhel" ] || [ "$ID_LIKE" = "rhel" ] || [ "$ID_LIKE" = "centos" ]; then
+            if [ -f /etc/centos-release ]; then
+                OS="centos"
+            else
+                OS="rhel"
+            fi
+        fi
+        
         print_info "Phát hiện hệ điều hành: $OS $OS_VERSION"
     else
         print_error "Không thể phát hiện hệ điều hành"
@@ -88,8 +98,16 @@ update_packages() {
     if [ "$OS" = "ubuntu" ] || [ "$OS" = "debian" ]; then
         apt-get update -qq
         print_success "Đã cập nhật packages"
+    elif [ "$OS" = "centos" ] || [ "$OS" = "rhel" ] || [ "$OS" = "fedora" ]; then
+        if command -v dnf &> /dev/null; then
+            dnf check-update -q || true
+            print_success "Đã cập nhật packages"
+        else
+            yum check-update -q || true
+            print_success "Đã cập nhật packages"
+        fi
     else
-        print_error "Hệ điều hành không được hỗ trợ. Chỉ hỗ trợ Ubuntu/Debian"
+        print_error "Hệ điều hành không được hỗ trợ. Chỉ hỗ trợ Ubuntu/Debian/CentOS/RHEL/Fedora"
         exit 1
     fi
 }
@@ -160,15 +178,71 @@ install_php() {
             php${PHP_VERSION}-exif
         
         print_success "Đã cài đặt PHP $PHP_VERSION"
+    elif [ "$OS" = "centos" ] || [ "$OS" = "rhel" ]; then
+        # Install EPEL and Remi repository for PHP 8.2
+        yum install -y epel-release
+        yum install -y https://rpms.remirepo.net/enterprise/remi-release-7.rpm
+        
+        # Enable PHP 8.2
+        yum install -y yum-utils
+        yum-config-manager --enable remi-php82
+        
+        # Install PHP and extensions
+        yum install -y php php-fpm php-cli php-common php-mysqlnd \
+            php-zip php-gd php-mbstring php-curl php-xml \
+            php-bcmath php-fileinfo php-exif
+        
+        print_success "Đã cài đặt PHP $PHP_VERSION"
+    elif [ "$OS" = "fedora" ]; then
+        dnf install -y php php-fpm php-cli php-common php-mysqlnd \
+            php-zip php-gd php-mbstring php-curl php-xml \
+            php-bcmath php-fileinfo php-exif
+        
+        print_success "Đã cài đặt PHP"
     fi
 }
 
 install_php_extensions() {
     for ext in "${MISSING_EXTENSIONS[@]}"; do
         print_info "Đang cài đặt php${PHP_VERSION}-${ext}..."
-        apt-get install -y php${PHP_VERSION}-${ext} 2>/dev/null || print_warning "Không thể cài đặt php${PHP_VERSION}-${ext}, có thể đã được bao gồm"
+        if [ "$OS" = "ubuntu" ] || [ "$OS" = "debian" ]; then
+            # Try to install the extension
+            if apt-get install -y php${PHP_VERSION}-${ext} 2>/dev/null; then
+                print_success "Đã cài đặt php${PHP_VERSION}-${ext}"
+            else
+                # Check if extension is already available (might be included in another package)
+                if php -m | grep -qi "^$ext$"; then
+                    print_success "Extension $ext đã có sẵn (được bao gồm trong package khác)"
+                else
+                    # For exif, it's often included in gd, so just warn
+                    if [ "$ext" = "exif" ]; then
+                        print_warning "Extension exif không thể cài đặt riêng, có thể đã được bao gồm trong php-gd"
+                    else
+                        print_warning "Không thể cài đặt php${PHP_VERSION}-${ext}"
+                    fi
+                fi
+            fi
+        elif [ "$OS" = "centos" ] || [ "$OS" = "rhel" ] || [ "$OS" = "fedora" ]; then
+            # Map extension names for CentOS/RHEL
+            case $ext in
+                "pdo_mysql")
+                    if command -v yum &> /dev/null; then
+                        yum install -y php-mysqlnd 2>/dev/null || print_warning "Không thể cài đặt php-mysqlnd"
+                    else
+                        dnf install -y php-mysqlnd 2>/dev/null || print_warning "Không thể cài đặt php-mysqlnd"
+                    fi
+                    ;;
+                *)
+                    if command -v yum &> /dev/null; then
+                        yum install -y php-${ext} 2>/dev/null || print_warning "Không thể cài đặt php-${ext}"
+                    else
+                        dnf install -y php-${ext} 2>/dev/null || print_warning "Không thể cài đặt php-${ext}"
+                    fi
+                    ;;
+            esac
+        fi
     done
-    print_success "Đã cài đặt các PHP extensions"
+    print_success "Đã hoàn tất cài đặt PHP extensions"
 }
 
 # Check and install Composer
@@ -188,9 +262,30 @@ install_composer() {
     print_info "Đang cài đặt Composer..."
     
     cd /tmp
-    php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
+    
+    # Try to download using curl first, then wget, then php copy
+    if command -v curl &> /dev/null; then
+        print_info "Đang tải Composer bằng curl..."
+        curl -sS https://getcomposer.org/installer -o composer-setup.php
+    elif command -v wget &> /dev/null; then
+        print_info "Đang tải Composer bằng wget..."
+        wget -q https://getcomposer.org/installer -O composer-setup.php
+    else
+        print_info "Đang tải Composer bằng PHP..."
+        php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
+    fi
+    
+    # Check if file was downloaded
+    if [ ! -f composer-setup.php ]; then
+        print_error "Không thể tải Composer installer. Vui lòng kiểm tra kết nối internet."
+        exit 1
+    fi
+    
+    # Install Composer
     php composer-setup.php --install-dir=/usr/local/bin --filename=composer
-    php -r "unlink('composer-setup.php');"
+    
+    # Clean up
+    rm -f composer-setup.php
     
     # Verify installation
     if command -v composer &> /dev/null; then
@@ -232,6 +327,23 @@ install_nodejs() {
     if [ "$OS" = "ubuntu" ] || [ "$OS" = "debian" ]; then
         curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash -
         apt-get install -y nodejs
+        
+        # Verify installation
+        if command -v node &> /dev/null && command -v npm &> /dev/null; then
+            print_success "Đã cài đặt Node.js $(node -v) và npm $(npm -v)"
+        else
+            print_error "Cài đặt Node.js/npm thất bại"
+            exit 1
+        fi
+    elif [ "$OS" = "centos" ] || [ "$OS" = "rhel" ] || [ "$OS" = "fedora" ]; then
+        # Install Node.js from NodeSource
+        curl -fsSL https://rpm.nodesource.com/setup_${NODE_VERSION}.x | bash -
+        
+        if command -v yum &> /dev/null; then
+            yum install -y nodejs
+        else
+            dnf install -y nodejs
+        fi
         
         # Verify installation
         if command -v node &> /dev/null && command -v npm &> /dev/null; then
@@ -284,6 +396,22 @@ install_mysql() {
         print_warning "⚠️  QUAN TRỌNG: Vui lòng đổi password root MySQL bằng lệnh:"
         print_info "   sudo mysql_secure_installation"
         print_info "   hoặc: sudo mysql -u root -p"
+    elif [ "$OS" = "centos" ] || [ "$OS" = "rhel" ] || [ "$OS" = "fedora" ]; then
+        # CentOS/RHEL thường dùng MariaDB (tương thích MySQL)
+        if command -v yum &> /dev/null; then
+            yum install -y mariadb-server mariadb
+        else
+            dnf install -y mariadb-server mariadb
+        fi
+        
+        # Start and enable MariaDB
+        systemctl start mariadb
+        systemctl enable mariadb
+        
+        print_success "Đã cài đặt MariaDB (tương thích MySQL)"
+        print_warning "⚠️  QUAN TRỌNG: Vui lòng đổi password root MySQL bằng lệnh:"
+        print_info "   sudo mysql_secure_installation"
+        print_info "   hoặc: sudo mysql -u root -p"
     fi
 }
 
@@ -321,6 +449,18 @@ install_nginx() {
         systemctl enable nginx
         
         print_success "Đã cài đặt Nginx"
+    elif [ "$OS" = "centos" ] || [ "$OS" = "rhel" ] || [ "$OS" = "fedora" ]; then
+        if command -v yum &> /dev/null; then
+            yum install -y nginx
+        else
+            dnf install -y nginx
+        fi
+        
+        # Start and enable Nginx
+        systemctl start nginx
+        systemctl enable nginx
+        
+        print_success "Đã cài đặt Nginx"
     fi
 }
 
@@ -342,6 +482,16 @@ install_certbot() {
     
     if [ "$OS" = "ubuntu" ] || [ "$OS" = "debian" ]; then
         apt-get install -y certbot python3-certbot-nginx
+        print_success "Đã cài đặt Certbot"
+    elif [ "$OS" = "centos" ] || [ "$OS" = "rhel" ] || [ "$OS" = "fedora" ]; then
+        # Install EPEL first (if not already installed)
+        if command -v yum &> /dev/null; then
+            yum install -y epel-release
+            yum install -y certbot python3-certbot-nginx
+        else
+            dnf install -y epel-release
+            dnf install -y certbot python3-certbot-nginx
+        fi
         print_success "Đã cài đặt Certbot"
     fi
 }

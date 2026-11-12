@@ -3,116 +3,85 @@
 namespace App\Exports;
 
 use App\Models\Form;
+use App\Services\Forms\ResponseTable;
+use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromCollection;
+use Maatwebsite\Excel\Concerns\WithCustomValueBinder;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
-use Maatwebsite\Excel\Concerns\WithTitle;
 use Maatwebsite\Excel\Concerns\WithStyles;
+use Maatwebsite\Excel\Concerns\WithTitle;
+use PhpOffice\PhpSpreadsheet\Cell\Cell;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\Cell\DefaultValueBinder;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-class FormResponsesExport implements FromCollection, WithHeadings, WithMapping, WithTitle, WithStyles
+class FormResponsesExport extends DefaultValueBinder implements FromCollection, WithHeadings, WithMapping, WithTitle, WithStyles, WithCustomValueBinder
 {
     protected $form;
     protected $responseId;
-    protected $nonAnswerTypes = ['section', 'description', 'image', 'video'];
+
+    private ?Collection $responses = null;
+    private ?ResponseTable $table = null;
 
     public function __construct(Form $form, $responseId = null)
     {
         $this->form = $form;
         $this->responseId = $responseId;
     }
-    
-    /**
-     * Get fields that should be included in export (exclude non-answer types)
-     */
-    protected function getExportableFields()
-    {
-        return $this->form->fields->filter(function($field) {
-            return !in_array($field->type, $this->nonAnswerTypes);
-        });
-    }
 
-    /**
-     * Get the responses collection
-     */
     public function collection()
     {
-        $query = $this->form->responses()->with(['answers.field', 'user']);
-
-        if ($this->responseId) {
-            $query->where('id', $this->responseId);
-        }
-
-        return $query->get();
+        return $this->responses();
     }
 
-    /**
-     * Map each response to a row
-     */
     public function map($response): array
     {
-        $row = [
-            $response->id,
-            $response->submitted_at->format('Y-m-d H:i:s'),
-            $response->user ? $response->user->email : 'Anonymous',
-            $response->ip_address,
-        ];
-
-        // Add answers for each field (exclude non-answer types)
-        foreach ($this->getExportableFields() as $field) {
-            $answer = $response->answers->firstWhere('field_id', $field->id);
-            
-            if ($answer) {
-                if ($answer->file_path) {
-                    $row[] = url('storage/' . $answer->file_path);
-                } else {
-                    $value = $answer->value;
-                    $row[] = is_array($value) ? implode(', ', $value) : $value;
-                }
-            } else {
-                $row[] = '';
-            }
-        }
-
-        return $row;
+        return $this->table()->row($response);
     }
 
-    /**
-     * Define the headings
-     */
     public function headings(): array
     {
-        $headings = [
-            'Response ID',
-            'Submitted At',
-            'User',
-            'IP Address',
-        ];
-
-        // Add field labels as headings (exclude non-answer types)
-        foreach ($this->getExportableFields() as $field) {
-            $headings[] = $field->label;
-        }
-
-        return $headings;
+        return $this->table()->headings();
     }
 
-    /**
-     * Set the worksheet title
-     */
+    /** Text stays text: keeps leading zeros of phone numbers and never turns answers into formulas. */
+    public function bindValue(Cell $cell, $value)
+    {
+        if (is_string($value)) {
+            $cell->setValueExplicit($value, DataType::TYPE_STRING);
+            return true;
+        }
+        return parent::bindValue($cell, $value);
+    }
+
     public function title(): string
     {
-        return substr($this->form->title, 0, 31); // Excel sheet name limit
+        $title = trim(preg_replace('/[\\\\\/\?\*\[\]:]/u', ' ', (string) $this->form->title)) ?: 'Responses';
+        return mb_substr($title, 0, 31);
     }
 
-    /**
-     * Style the worksheet
-     */
     public function styles(Worksheet $sheet)
     {
         return [
             1 => ['font' => ['bold' => true]],
         ];
     }
-}
 
+    private function responses(): Collection
+    {
+        if ($this->responses === null) {
+            $query = $this->form->responses()->with(['answers', 'user', 'identities'])->orderBy('id');
+            if ($this->responseId) {
+                $query->where('id', $this->responseId);
+            }
+            $this->responses = $query->get();
+        }
+        return $this->responses;
+    }
+
+    private function table(): ResponseTable
+    {
+        return $this->table ??= new ResponseTable($this->form, $this->responses());
+    }
+}

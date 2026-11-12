@@ -1,4 +1,7 @@
 import { create } from 'zustand'
+import { normalizeField, normalizeFields, cloneFields, blockEnd, insertAt } from '../utils/formStructure'
+
+const withOrder = (fields) => fields.map((field, index) => ({ ...field, order: index }))
 
 export const useFormStore = create((set) => ({
   currentForm: null,
@@ -10,7 +13,7 @@ export const useFormStore = create((set) => ({
     if (!state.isDirty) {
       return { 
         currentForm: form, 
-        fields: form?.fields || [],
+        fields: normalizeFields(form?.fields),
         isDirty: false 
       }
     } else {
@@ -22,11 +25,23 @@ export const useFormStore = create((set) => ({
       }
     }
   }),
+
+  /** After a save: adopt the server ids of saved fields; stay dirty if edits happened meanwhile. */
+  applySavedFields: (form, savedFields, sentFields) => set((state) => {
+    const idByKey = Object.fromEntries((savedFields || []).map((f) => [f.key, f.id]))
+    const fields = state.fields.map((f) => (idByKey[f.key] ? { ...f, id: idByKey[f.key] } : f))
+    return { currentForm: form, fields, isDirty: state.fields !== sentFields }
+  }),
   
-  setFields: (fields) => set({ fields, isDirty: true }),
+  setFields: (fields) => set({ fields: withOrder(fields), isDirty: true }),
   
   addField: (field) => set((state) => ({
-    fields: [...state.fields, { ...field, order: state.fields.length }],
+    fields: [...state.fields, { ...normalizeField(field), order: state.fields.length }],
+    isDirty: true,
+  })),
+
+  insertFields: (at, newFields) => set((state) => ({
+    fields: withOrder(insertAt(state.fields, at, newFields.map(normalizeField))),
     isDirty: true,
   })),
   
@@ -38,23 +53,22 @@ export const useFormStore = create((set) => ({
   })),
   
   removeField: (index) => set((state) => ({
-    fields: state.fields.filter((_, i) => i !== index),
+    fields: withOrder(state.fields.filter((_, i) => i !== index)),
     isDirty: true,
   })),
   
   duplicateField: (index) => set((state) => {
     const field = state.fields[index]
-    const newField = { ...field, id: undefined }
-    const newFields = [...state.fields]
-    newFields.splice(index + 1, 0, newField)
+    const end = field.type === 'random_section' ? blockEnd(state.fields, index) : index
+    const copies = cloneFields(state.fields.slice(index, end + 1))
     return {
-      fields: newFields.map((f, i) => ({ ...f, order: i })),
+      fields: withOrder(insertAt(state.fields, end + 1, copies)),
       isDirty: true,
     }
   }),
   
   reorderFields: (newFields) => set({
-    fields: newFields.map((field, index) => ({ ...field, order: index })),
+    fields: withOrder(newFields),
     isDirty: true,
   }),
   
@@ -66,4 +80,3 @@ export const useFormStore = create((set) => ({
   
   markAsSaved: () => set({ isDirty: false }),
 }))
-

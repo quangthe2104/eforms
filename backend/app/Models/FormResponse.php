@@ -15,10 +15,12 @@ class FormResponse extends Model
         'ip_address',
         'user_agent',
         'submitted_at',
+        'assignments',
     ];
 
     protected $casts = [
         'submitted_at' => 'datetime',
+        'assignments' => 'array',
     ];
 
     protected static function boot()
@@ -52,6 +54,11 @@ class FormResponse extends Model
     public function answers()
     {
         return $this->hasMany(ResponseAnswer::class, 'response_id');
+    }
+
+    public function identities()
+    {
+        return $this->hasMany(ResponseIdentity::class, 'response_id');
     }
 }
 

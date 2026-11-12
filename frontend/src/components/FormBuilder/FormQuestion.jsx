@@ -6,6 +6,8 @@ import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from 
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { useFormStore } from '../../store/formStore'
 import RichTextEditor from './RichTextEditor'
+import AdvancedOptions, { advancedSummary } from './AdvancedOptions'
+import { updateChoiceReferences, removeFieldAt, referencesTo, sanitizeSettings, shortLabel } from '../../utils/formStructure'
 
 const FIELD_TYPE_LABELS = {
   short_text: 'Văn bản ngắn',
@@ -75,7 +77,7 @@ const getFieldTypeIcon = (type) => {
 }
 
 export default function FormQuestion({ field, index, isActive, onClick, theme }) {
-  const { updateField, removeField, duplicateField } = useFormStore()
+  const { updateField, duplicateField, setFields } = useFormStore()
   const [editData, setEditData] = useState({ ...field })
   const [showTypeDropdown, setShowTypeDropdown] = useState(false)
   const [editingQuestion, setEditingQuestion] = useState(false)
@@ -93,7 +95,7 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: index })
+  } = useSortable({ id: field.key })
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -104,6 +106,24 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
   useEffect(() => {
     setEditData({ ...field })
   }, [field])
+
+  const syncReferences = (kind, oldValue, newValue) => {
+    const { fields } = useFormStore.getState()
+    const next = updateChoiceReferences(fields, field.key, kind, oldValue, newValue)
+    if (next.some((f, i) => f !== fields[i])) setFields(next)
+  }
+
+  const settings = editData.settings || {}
+  const otherOption = settings.other_option || {}
+  const setOtherOption = (enabled) => {
+    const next = { ...settings }
+    if (enabled) {
+      next.other_option = { enabled: true, label: otherOption.label || (editData.type === 'checkbox' ? 'Khác (xin ghi rõ)' : 'Khác') }
+    } else {
+      delete next.other_option
+    }
+    handleUpdate({ settings: next })
+  }
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -129,13 +149,27 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
 
   const handleUpdateOption = (optIndex, value) => {
     const options = [...(editData.options || [])]
+    const oldValue = options[optIndex]
     options[optIndex] = value
-    handleUpdate({ options })
+    const exclusive = settings.exclusive_options
+    const updates = { options }
+    if (exclusive?.includes(oldValue)) {
+      updates.settings = { ...settings, exclusive_options: exclusive.map((o) => (o === oldValue ? value : o)) }
+    }
+    handleUpdate(updates)
+    syncReferences('option', oldValue, value)
   }
 
   const handleRemoveOption = (optIndex) => {
+    const removed = editData.options[optIndex]
     const options = editData.options.filter((_, i) => i !== optIndex)
-    handleUpdate({ options })
+    const updates = { options }
+    if (settings.exclusive_options?.includes(removed) && !options.includes(removed)) {
+      const exclusive = settings.exclusive_options.filter((o) => o !== removed)
+      updates.settings = { ...settings, exclusive_options: exclusive.length ? exclusive : undefined }
+    }
+    handleUpdate(updates)
+    if (!options.includes(removed)) syncReferences('option', removed, undefined)
   }
 
   const handleOptionDragEnd = (event) => {
@@ -185,13 +219,17 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
 
   const handleUpdateRow = (rowIndex, value) => {
     const rows = [...(editData.rows || [])]
+    const oldValue = rows[rowIndex]
     rows[rowIndex] = value
     handleUpdate({ rows })
+    syncReferences('row', oldValue, value)
   }
 
   const handleRemoveRow = (rowIndex) => {
+    const removed = editData.rows[rowIndex]
     const rows = editData.rows.filter((_, i) => i !== rowIndex)
     handleUpdate({ rows })
+    if (!rows.includes(removed)) syncReferences('row', removed, undefined)
   }
 
   const handleAddColumn = () => {
@@ -201,13 +239,17 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
 
   const handleUpdateColumn = (colIndex, value) => {
     const columns = [...(editData.columns || [])]
+    const oldValue = columns[colIndex]
     columns[colIndex] = value
     handleUpdate({ columns })
+    syncReferences('column', oldValue, value)
   }
 
   const handleRemoveColumn = (colIndex) => {
+    const removed = editData.columns[colIndex]
     const columns = editData.columns.filter((_, i) => i !== colIndex)
     handleUpdate({ columns })
+    if (!columns.includes(removed)) syncReferences('column', removed, undefined)
   }
 
   const handleGridRowKeyDown = (e, rowIndex) => {
@@ -271,8 +313,13 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
   }
 
   const handleDelete = () => {
-    if (confirm('Bạn có chắc chắn muốn xóa câu hỏi này?')) {
-      removeField(index)
+    const { fields } = useFormStore.getState()
+    const dependents = referencesTo(fields, [field.key])
+    const message = dependents.length
+      ? `Bạn có chắc chắn muốn xóa câu hỏi này?\n\nCác thiết lập dựa trên câu này sẽ bị gỡ ở: ${dependents.map((l) => `"${shortLabel({ label: l }, 40)}"`).join(', ')}.`
+      : 'Bạn có chắc chắn muốn xóa câu hỏi này?'
+    if (confirm(message)) {
+      setFields(removeFieldAt(fields, index))
     }
   }
 
@@ -280,7 +327,7 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
     const isGridType = newType === 'multiple_choice_grid' || newType === 'checkbox_grid'
     const needsOptions = ['dropdown', 'radio', 'checkbox'].includes(newType)
     
-    const updates = { type: newType }
+    const updates = { type: newType, settings: sanitizeSettings(newType, settings) }
     
     if (needsOptions && !editData.options) {
       updates.options = ['Tùy chọn 1']
@@ -297,6 +344,9 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
 
   const needsOptions = ['dropdown', 'radio', 'checkbox'].includes(editData.type)
   const isGrid = editData.type === 'multiple_choice_grid' || editData.type === 'checkbox_grid'
+  const pipedSource = settings.piped_from
+    ? useFormStore.getState().fields.find((f) => f.key === settings.piped_from)
+    : null
 
   // Drag & Drop sensors for grid rows/columns
   const gridSensors = useSensors(
@@ -483,6 +533,20 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
         </div>
       )}
 
+      {!isSpecialType && (isActive ? (
+        <textarea
+          value={editData.help_text || ''}
+          onChange={(e) => handleUpdate({ help_text: e.target.value })}
+          onClick={(e) => e.stopPropagation()}
+          placeholder="Hướng dẫn dưới câu hỏi (tùy chọn)"
+          rows={Math.min(4, Math.max(1, (editData.help_text || '').split('\n').length))}
+          aria-label="Hướng dẫn dưới câu hỏi"
+          className="w-full mb-3 px-3 py-1.5 text-sm text-gray-600 border-0 border-b border-gray-200 focus:border-blue-500 focus:outline-none resize-y bg-transparent"
+        />
+      ) : editData.help_text ? (
+        <p className="mb-3 px-3 text-sm text-gray-500 whitespace-pre-line">{editData.help_text}</p>
+      ) : null)}
+
       {/* Question Body */}
       <div className="eforms-question-body">
         {/* Text fields */}
@@ -521,8 +585,17 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
           </div>
         )}
 
+        {needsOptions && settings.piped_from && (
+          <div className="rounded border border-dashed border-gray-300 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+            Phương án là các lựa chọn người trả lời đã tích ở câu:{' '}
+            <span className="font-medium text-gray-800">
+              {pipedSource ? shortLabel(pipedSource, 80) : '(câu nguồn không còn tồn tại)'}
+            </span>
+          </div>
+        )}
+
         {/* Options-based fields */}
-        {needsOptions && (
+        {needsOptions && !settings.piped_from && (
           <div className="space-y-2">
             <DndContext
               sensors={gridSensors}
@@ -542,6 +615,7 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
                     isActive={isActive}
                     isEditing={editingOptionIndex === optIndex}
                     fieldType={editData.type}
+                    isExclusive={(settings.exclusive_options || []).includes(option)}
                     canRemove={editData.options.length > 1}
                     onStartEdit={() => setEditingOptionIndex(optIndex)}
                     onUpdate={(value) => handleUpdateOption(optIndex, value)}
@@ -553,6 +627,45 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
                 ))}
               </SortableContext>
             </DndContext>
+
+            {otherOption.enabled && (
+              <div className="eforms-option">
+                {isActive && <span className="w-4" />}
+                <input
+                  type={editData.type === 'checkbox' ? 'checkbox' : 'radio'}
+                  disabled
+                  className="eforms-option-radio"
+                />
+                {isActive ? (
+                  <div className="eforms-input-wrapper" style={{ flex: 1, marginBottom: 0 }}>
+                    <input
+                      type="text"
+                      value={otherOption.label || ''}
+                      onChange={(e) => handleUpdate({ settings: { ...settings, other_option: { ...otherOption, label: e.target.value } } })}
+                      onFocus={(e) => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
+                      className="eforms-option-input"
+                      placeholder="Khác"
+                    />
+                  </div>
+                ) : (
+                  <span className="text-gray-700">{otherOption.label || 'Khác'}</span>
+                )}
+                <span className="text-sm text-gray-400 italic whitespace-nowrap">+ ô ghi rõ</span>
+                {isActive && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setOtherOption(false)
+                    }}
+                    className="eforms-option-remove"
+                    title='Bỏ phương án "Khác"'
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            )}
             
             {isActive && (
               <div className="eforms-option">
@@ -570,6 +683,21 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
                 >
                   Thêm tùy chọn
                 </button>
+                {!otherOption.enabled && (
+                  <>
+                    <span className="text-sm text-gray-500">hoặc</span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setOtherOption(true)
+                      }}
+                      className="eforms-add-option"
+                      style={{ color: theme?.primary_color || '#2563eb' }}
+                    >
+                      thêm "Khác (ghi rõ)"
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -952,6 +1080,18 @@ export default function FormQuestion({ field, index, isActive, onClick, theme })
         )}
       </div>
 
+      {isActive ? (
+        <AdvancedOptions field={editData} index={index} onUpdate={handleUpdate} />
+      ) : (
+        advancedSummary(editData).length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1">
+            {advancedSummary(editData).map((item) => (
+              <span key={item} className="eforms-chip">{item}</span>
+            ))}
+          </div>
+        )
+      )}
+
       {/* Question Footer (only when active and not special type) */}
       {isActive && (
         <div className="eforms-question-footer">
@@ -1028,6 +1168,7 @@ function SortableOption({
   isActive, 
   isEditing, 
   fieldType, 
+  isExclusive,
   canRemove, 
   onStartEdit, 
   onUpdate, 
@@ -1097,6 +1238,7 @@ function SortableOption({
               {option || `Tùy chọn ${optIndex + 1}`}
             </div>
           )}
+          {isExclusive && <span className="eforms-chip">loại trừ</span>}
           {canRemove && (
             <button
               onClick={(e) => {
@@ -1117,6 +1259,7 @@ function SortableOption({
             className="eforms-option-radio"
           />
           <span className="text-gray-700">{option}</span>
+          {isExclusive && <span className="eforms-chip">loại trừ</span>}
         </>
       )}
     </div>

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 
 class FormField extends Model
 {
@@ -25,6 +26,10 @@ class FormField extends Model
         'is_required',
         'order',
         'conditional_logic',
+        'key',
+        'settings',
+        'random_group_key',
+        'variant_key',
     ];
 
     protected $casts = [
@@ -33,9 +38,34 @@ class FormField extends Model
         'columns' => 'array',
         'validation_rules' => 'array',
         'conditional_logic' => 'array',
+        'settings' => 'array',
         'is_required' => 'boolean',
         'order' => 'integer',
     ];
+
+    /**
+     * Types that only display content and never collect an answer.
+     */
+    public const NON_ANSWER_TYPES = ['section', 'description', 'image', 'video', 'random_section'];
+
+    protected static function booted()
+    {
+        static::creating(function (FormField $field) {
+            if (empty($field->key)) {
+                $field->key = (string) Str::uuid();
+            }
+        });
+    }
+
+    public function collectsAnswer(): bool
+    {
+        return !in_array($this->type, self::NON_ANSWER_TYPES, true);
+    }
+
+    public function setting(string $name, $default = null)
+    {
+        return data_get($this->settings ?? [], $name, $default);
+    }
 
     /**
      * Get the form that owns the field.
@@ -77,6 +107,7 @@ class FormField extends Model
             'rating' => 'Rating',
             'scale' => 'Linear Scale',
             'section' => 'Section Header',
+            'random_section' => 'Random Section',
         ];
     }
 }

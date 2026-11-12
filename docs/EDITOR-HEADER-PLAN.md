@@ -1,0 +1,298 @@
+# Kế hoạch: Header trang sửa form kiểu Google Forms, lưu tự động, hoàn tác/làm lại, cộng tác nhiều người
+
+File này là nguồn duy nhất về phạm vi, quyết định và tiến độ. Chat mới đọc file này để làm tiếp.
+Ảnh tham chiếu: header Google Forms, popup "Chia sẻ" của Google Forms, ô chọn loại câu hỏi (do người dùng gửi ngày 12/11/2026).
+
+---
+
+## 1. Trạng thái
+
+| Giai đoạn | Nội dung | Trạng thái |
+|---|---|---|
+| 0 | Thảo luận, chốt thiết kế | Đã chốt (12/11/2026) |
+| 1 | Backend: vai trò cộng tác viên, kiểm tra quyền tập trung, lời mời, tìm người dùng | Chưa làm |
+| 2 | Backend: lưu theo thao tác, số phiên bản, nhật ký thay đổi, hiện diện | Chưa làm |
+| 3 | Frontend: layout trang sửa mới (header + 3 tab), bỏ phần header form khỏi `MainLayout` | Chưa làm |
+| 4 | Frontend: lưu tự động, chỉ báo lưu, cảnh báo thay đổi phá dữ liệu, hoàn tác/làm lại | Chưa làm |
+| 5 | Frontend: đồng bộ trực tiếp (polling) + hiện diện | Chưa làm |
+| 6 | Frontend: popup Chia sẻ, trang nhận lời mời, đăng ký theo lời mời, danh sách form được chia sẻ | Chưa làm |
+| 7 | Chi tiết giao diện (ô loại câu hỏi, tooltip, mobile) + kiểm thử toàn bộ | Chưa làm |
+
+## 2. Môi trường local
+
+- Frontend: `http://eforms.test:5173` (`npm run dev` trong `frontend`)
+- Backend: `http://eforms.test` qua Apache WAMP, PHP 8.3: `D:\wamp64\bin\php\php8.3.14\php.exe artisan ...`
+- Database: MySQL `eforms_db` (root, không mật khẩu)
+
+## 3. Hiện trạng code (trước khi làm)
+
+- Header nằm trong `frontend/src/layouts/MainLayout.jsx`, dùng chung cho mọi trang. Ở trang sửa form, header nhận các hành động qua `FormBuilderContext` (`setFormBuilderActions`): logo + chữ "eForms", các nút có chữ (Cài đặt, Kết quả, Chia sẻ, Xem trước, Lưu, Xuất bản), menu ⋮ (Nhân bản, Hủy xuất bản, Xóa).
+- Trang sửa: `frontend/src/components/FormBuilder/index.jsx`. `frontend/src/pages/forms/FormBuilder.jsx` là bản cũ, không có route nào dùng.
+- Chỉ lưu khi bấm Lưu: `formAPI.update` (tiêu đề, mô tả, theme, settings) + `POST /forms/{form}/fields/bulk-update`. API này **xóa mọi câu hỏi không có trong danh sách gửi lên**, nên nếu nhiều người cùng sửa sẽ xóa mất câu hỏi của nhau.
+- Theme đang xem thử được giữ trong `localStorage` (`previewTheme_{id}`) cho tới khi bấm Lưu.
+- Form đã có câu trả lời: khi Lưu, nếu có thay đổi phá dữ liệu (`destructiveChanges` trong `utils/formStructure.js`) thì hiện `confirm()`.
+- Câu trả lời là trang riêng `/forms/:id/responses` (`pages/forms/FormResponses.jsx` + `FormSummary`), chi tiết là `/forms/:id/responses/:responseId`.
+- Cài đặt là popup `components/FormSettings.jsx`, có nút Lưu riêng.
+- Mỗi câu hỏi đã có `key` ổn định (từ đợt Phần ngẫu nhiên), dùng được làm định danh cho thao tác.
+- Ô chọn loại câu hỏi (`.eforms-type-selector` trong `FormQuestion.jsx`) luôn hiển thị, không phụ thuộc `isActive`.
+- Backend (Laravel 12, Sanctum token, MySQL):
+  - Mỗi form có đúng một chủ (`forms.user_id`). Có khoảng 15 chỗ kiểm tra lặp lại `if ($form->user_id !== $request->user()->id) return 403` trong `FormController`, `FormFieldController`, `FormResponseController`, `ExportController`, `ThumbnailController`.
+  - Không có policy, không có cộng tác viên, không có API tìm người dùng.
+  - Không có cấu hình email (`MAIL_*`), không có lớp Mail/Notification.
+  - `forms.status` là enum('draft','published','closed'). `accept_responses` có cột nhưng `PublicFormController` không kiểm tra. Form công khai chỉ phục vụ khi `published` + `is_public`.
+  - Đăng ký (`AuthController@register`): name, email, password (+ confirmation), trả token. Không xác thực email.
+  - `FormController@update` nhận cập nhật từng phần. Không kiểm tra xung đột phiên bản.
+
+---
+
+## 4. Quyết định đã chốt
+
+### 4.1 Header (hàng 1), thứ tự giống Google Forms
+
+Từ trái sang phải:
+
+1. Icon logo (không có chữ "eForms"), bấm vào thì về danh sách form.
+2. Tiêu đề form: bấm vào để sửa tại chỗ, đồng bộ hai chiều với thẻ tiêu đề trong tab Câu hỏi. Ngay sau là **nhãn trạng thái** và **chỉ báo lưu** (mục 4.4).
+3. (khoảng trống)
+4. Avatar những người đang mở form (hiện diện, mục 4.7).
+5. Tùy chỉnh giao diện (icon bảng màu): mở panel `FormTheme` hiện có.
+6. Xem trước (icon mắt): mở `/forms/:id/preview` ở tab mới như hiện nay.
+7. Hoàn tác, Làm lại.
+8. Sao chép đường liên kết của người trả lời (icon liên kết). Nếu form chưa xuất bản: toast "Biểu mẫu chưa được xuất bản" kèm nút "Xuất bản".
+9. Thêm cộng tác viên (icon người +): mở popup Chia sẻ (mục 4.8).
+10. Nút xuất bản (mục 4.5).
+11. Menu ⋮: Nhân bản, Xóa (chỉ Chủ sở hữu).
+12. Avatar/menu người dùng.
+
+- Các nút chỉ có icon. Rê chuột (hoặc focus bằng bàn phím) thì hiện tooltip tối màu như Google, dùng chung một component `Tooltip`, không dùng `title` mặc định của trình duyệt.
+- Mỗi nút có `aria-label`.
+- Mobile: giữ logo, tiêu đề, chỉ báo lưu, Hoàn tác/Làm lại, nút xuất bản. Các nút còn lại dồn vào menu ⋮.
+- Người xem (vai trò chỉ xem): ẩn Hoàn tác/Làm lại, Giao diện, nút xuất bản; tiêu đề không sửa được; có nhãn "Chỉ xem".
+
+### 4.2 Header (hàng 2): ba tab
+
+| Tab | URL | Nội dung |
+|---|---|---|
+| Câu hỏi | `/forms/:id/edit` | Màn hình sửa form hiện tại |
+| Câu trả lời (kèm số lượng) | `/forms/:id/responses`, chi tiết `/forms/:id/responses/:responseId` | Trang Xem kết quả hiện tại |
+| Cài đặt | `/forms/:id/settings` | Nội dung popup Cài đặt hiện tại, chuyển thành trang |
+
+- Một layout mới `FormEditorLayout` bọc cả ba tab. Header và trạng thái form (dữ liệu, lưu tự động, đồng bộ, hiện diện) sống trong layout, nên chuyển tab không tải lại form và không mất lịch sử hoàn tác.
+- `MainLayout` bỏ toàn bộ phần header riêng của trang sửa form. Bỏ `FormBuilderContext` nếu không còn ai dùng.
+- Popup `FormSettings` được bỏ. Nội dung được tách thành component dùng cho tab Cài đặt.
+
+### 4.3 Tạo form
+
+- Bấm "Tạo biểu mẫu" thì tạo ngay bản nháp trên server ("Biểu mẫu không có tiêu đề"), rồi chuyển tới `/forms/:id/edit`. Như vậy lưu tự động luôn có `id`.
+- Route `/forms/create` chuyển thành bước tạo rồi chuyển hướng như trên.
+
+### 4.4 Lưu tự động
+
+- Bỏ nút Lưu.
+- Mỗi thay đổi sinh ra một hoặc nhiều **thao tác** (mục 4.9) đưa vào hàng đợi. Hàng đợi được gửi sau 1,5 giây kể từ lần sửa cuối.
+- Gửi ngay khi: chuyển tab, đóng/ẩn trang (`visibilitychange`, `pagehide`, dùng `fetch` với `keepalive` để mang được header Bearer), hoặc bấm Xem trước.
+- Chỉ báo lưu cạnh tiêu đề:
+  - "Đang lưu…"
+  - "Đã lưu lúc HH:mm" (rê chuột vào thì hiện ngày giờ đầy đủ)
+  - "Có thay đổi chưa lưu" khi đang tạm dừng (mục 4.6)
+  - "Không lưu được – Thử lại" khi lỗi. Tự thử lại với độ trễ tăng dần, và chặn rời trang (`beforeunload`) nếu còn thay đổi chưa gửi.
+- Lỗi kiểm tra dữ liệu (422) từ server: hiện thông báo như hiện nay và chọn câu hỏi bị lỗi. Thao tác lỗi được giữ lại trong hàng đợi để sửa.
+- Theme lưu tự động như mọi thay đổi khác. Bỏ cơ chế `previewTheme` trong `localStorage`.
+- Tab Cài đặt cũng lưu tự động: công tắc lưu ngay, ô số/văn bản lưu sau 1,5 giây.
+- Ảnh thu nhỏ (`captureFormThumbnail`) không chụp sau mỗi lần lưu nữa. Chỉ chụp khi rời trang sửa, hoặc tối đa mỗi 2 phút nếu có thay đổi.
+- Form đã xuất bản: thay đổi được lưu tự động và có hiệu lực ngay với người trả lời, giống hành vi hiện tại sau khi bấm Lưu (xem mục 7).
+
+### 4.5 Nút xuất bản và nhãn trạng thái (như Google)
+
+| Trạng thái | Nhãn cạnh tiêu đề | Nút |
+|---|---|---|
+| `draft` | "Bản nháp" (xám) | "Xuất bản" (màu chính) |
+| `published` | "Đang nhận câu trả lời" (xanh lá) | "Đã xuất bản" (viền), bấm vào mở popup |
+| `closed` | "Không nhận câu trả lời" (đỏ/cam) | "Đã xuất bản" (viền), bấm vào mở popup |
+
+- Popup của nút "Đã xuất bản" gồm: công tắc "Nhận câu trả lời" (chuyển `published` ↔ `closed`), nút "Sao chép liên kết", nút "Hủy xuất bản" (về `draft`).
+- Backend: `PublicFormController` phải trả thông báo rõ ràng "Biểu mẫu không còn nhận câu trả lời" cho form `closed` (cả khi tải form và khi nộp), thay vì 404.
+- Bỏ "Hủy xuất bản" khỏi menu ⋮ vì đã có trong popup.
+
+### 4.6 Thay đổi phá dữ liệu (form đã có câu trả lời)
+
+- Trước khi gửi hàng đợi, nếu form đã có câu trả lời và thao tác thuộc loại phá dữ liệu (xóa câu hỏi, đổi loại câu, xóa/sửa lựa chọn… theo `destructiveChanges`), thì **tạm dừng lưu tự động** cho các thao tác đó.
+- Hiện thanh cảnh báo dưới header: "Thay đổi này ảnh hưởng tới N câu trả lời đã thu: …" với hai nút [Vẫn lưu] và [Hoàn tác].
+- Các thao tác không phá dữ liệu vẫn được lưu bình thường.
+
+### 4.7 Đồng bộ trực tiếp và hiện diện
+
+- Truyền thay đổi bằng **polling** mỗi 2,5 giây (khi tab ẩn: 15 giây). Lớp truyền tải được tách riêng (`syncTransport`) để sau này chuyển sang WebSocket (Laravel Reverb) mà không sửa logic.
+- Mỗi lần poll gửi `since=<revision>` + thông tin hiện diện (câu hỏi đang chọn). Server trả các thao tác của người khác từ revision đó + danh sách người đang mở form.
+- Thao tác từ người khác được áp vào store **không** đánh dấu cần lưu và **không** vào lịch sử hoàn tác.
+- Ô nhập đang được người dùng gõ không bị ghi đè giữa chừng. Giá trị từ xa được áp khi ô mất focus, nếu người dùng không sửa ô đó.
+- Nếu khoảng cách revision quá lớn hoặc server báo nhật ký đã bị dọn: tải lại toàn bộ form (giữ hàng đợi chưa gửi rồi áp lại).
+- **Hai người cùng sửa một câu hỏi:** làm theo hành vi quan sát được của Google Forms. Không khóa; ai lưu sau thắng **theo từng thuộc tính** (nội dung câu, mô tả, từng lựa chọn, bắt buộc…), không ghi đè cả câu hỏi.
+- **Hiện diện:**
+  - Avatar (chữ cái đầu, màu riêng mỗi người) trên header.
+  - Câu hỏi đang được người khác chọn có viền màu của người đó + nhãn tên nhỏ.
+  - Người dùng biến mất khỏi danh sách sau 30 giây không gửi poll.
+
+### 4.8 Chia sẻ và vai trò
+
+**Ba vai trò:** Chủ sở hữu, Người chỉnh sửa, Người xem.
+
+| Quyền | Chủ sở hữu | Người chỉnh sửa | Người xem |
+|---|---|---|---|
+| Xem câu hỏi, cài đặt | ✓ | ✓ | ✓ (chỉ đọc) |
+| Sửa câu hỏi, giao diện, cài đặt | ✓ | ✓ | |
+| Xuất bản / đóng / hủy xuất bản | ✓ | ✓ | |
+| Xem câu trả lời (tổng hợp + chi tiết), xuất Excel | ✓ | ✓ | ✓ |
+| Xóa câu trả lời | ✓ | ✓ | |
+| Nhân bản form (bản sao thuộc về người nhân bản) | ✓ | ✓ | ✓ |
+| Mời/gỡ/đổi vai trò Người chỉnh sửa, Người xem | ✓ | ✓ | |
+| Thêm/gỡ Chủ sở hữu | ✓ | | |
+| Xóa form | ✓ | | |
+
+- Có thể có nhiều Chủ sở hữu ngang quyền. Luôn phải còn ít nhất một Chủ sở hữu (server chặn việc gỡ hoặc hạ vai trò Chủ sở hữu cuối cùng).
+- Người dùng có thể tự rời khỏi form, trừ khi là Chủ sở hữu cuối cùng.
+
+**Popup Chia sẻ (theo hình 2):**
+
+- Ô "Thêm người theo tên hoặc email":
+  - Gợi ý khi gõ từ 3 ký tự, tối đa 8 kết quả, khớp theo tên hoặc email, loại những người đã có quyền.
+  - Gõ một email chưa có tài khoản thì hiện lựa chọn "Mời <email>".
+  - Chọn vai trò trước khi gửi. Có thể kèm lời nhắn và tùy chọn "Gửi email thông báo".
+- "Những người có quyền truy cập": avatar, tên, email, "(bạn)", và ô chọn vai trò (Chủ sở hữu / Người chỉnh sửa / Người xem / Gỡ quyền truy cập). Ô chọn bị khóa theo bảng quyền.
+- "Lời mời đang chờ": email, vai trò, hạn. Các nút: Sao chép link mời, Gửi lại email, Hủy lời mời.
+- "Quyền truy cập chung":
+  - Người chỉnh sửa: cố định "Hạn chế", chỉ người có quyền mới mở được.
+  - Người trả lời: "Bất kỳ ai có đường liên kết" hoặc "Yêu cầu đăng nhập". Gắn với `require_login` / `respondent_limit` hiện có và đồng bộ với tab Cài đặt (dùng chung logic, kể cả quy tắc `respondent_limit.account` buộc `require_login`).
+- Chân popup: nút "Sao chép đường liên kết của người trả lời" + nút "Xong".
+- Người xem mở popup: chỉ thấy danh sách, không sửa được.
+
+**Gửi lời mời (cả email lẫn link):**
+
+- Tạo lời mời thì luôn sinh link `/invite/{token}`. Token ngẫu nhiên 40+ ký tự, DB chỉ lưu bản băm, gắn với email được mời, hết hạn sau 7 ngày, dùng một lần.
+- Nếu đã cấu hình SMTP (`MAIL_MAILER` khác `log`/`array`), gửi email mời bằng Mailable (tiếng Việt). Nếu chưa, popup báo "Chưa cấu hình email – hãy sao chép link mời để gửi".
+- Mời người **đã có** tài khoản: thêm quyền ngay, không cần lời mời. Gửi email thông báo nếu có SMTP và người mời chọn "Gửi email thông báo".
+
+**Trang nhận lời mời `/invite/:token`:**
+
+- Token hỏng hoặc hết hạn: báo lỗi và hướng dẫn xin mời lại.
+- Đã đăng nhập đúng email: nhận lời mời rồi chuyển tới form (tab theo vai trò: Người xem vào Câu hỏi ở chế độ chỉ đọc).
+- Đã đăng nhập nhưng khác email: báo "Lời mời gửi tới <email>", có nút đăng xuất để đăng nhập đúng tài khoản.
+- Chưa đăng nhập, email chưa có tài khoản: chuyển sang trang Đăng ký. Email điền sẵn và khóa lại, `invite_token` được gửi kèm. Đăng ký thành công thì nhận lời mời và vào thẳng form.
+- Chưa đăng nhập, email đã có tài khoản: chuyển sang Đăng nhập (điền sẵn email). Đăng nhập xong thì nhận lời mời và vào form.
+
+**Danh sách form (`FormList`):**
+
+- Hiện cả form của tôi và form được chia sẻ với tôi, có bộ lọc "Tất cả / Của tôi / Được chia sẻ".
+- Mỗi thẻ form có biểu tượng chia sẻ, tên chủ sở hữu và vai trò của tôi.
+
+### 4.9 Hoàn tác / Làm lại
+
+- Áp dụng cho: câu hỏi (thêm, xóa, sửa, đổi loại, kéo thả, nhân bản, phần ngẫu nhiên), tiêu đề/mô tả form, giao diện. Không áp dụng cho tab Cài đặt.
+- Mỗi thao tác cục bộ lưu kèm thao tác ngược. Lịch sử tối đa 100 bước, chỉ trong phiên làm việc (mất khi tải lại trang).
+- Gõ chữ liên tiếp trên cùng một thuộc tính được gộp thành một bước (ngắt khi dừng 1 giây hoặc mất focus).
+- Chỉ hoàn tác thao tác của chính mình. Nếu thuộc tính hoặc câu hỏi đã bị người khác sửa/xóa sau đó, bước hoàn tác đó bị bỏ qua và có toast "Không thể hoàn tác vì <tên> đã thay đổi nội dung này".
+- Hoàn tác/làm lại sinh thao tác mới, đi qua lưu tự động như mọi thay đổi khác.
+- Phím tắt: Ctrl+Z (hoàn tác), Ctrl+Y và Ctrl+Shift+Z (làm lại). Chỉ có tác dụng khi focus **không** nằm trong ô nhập. Trong ô nhập, trình duyệt tự hoàn tác văn bản.
+- Nút bị mờ khi không có gì để hoàn tác/làm lại. Tooltip ghi rõ việc sẽ làm, ví dụ "Hoàn tác: Xóa câu hỏi 'Họ tên'".
+
+### 4.10 Ô chọn loại câu hỏi
+
+- `.eforms-type-selector` (hình 3) chỉ hiển thị khi câu hỏi đang được chọn (`isActive`). Bấm ra ngoài thì ẩn, đồng thời đóng dropdown nếu đang mở.
+- Kiểm tra `RandomSectionCard.jsx` và các thẻ khác có ô tương tự để áp dụng cùng quy tắc.
+
+---
+
+## 5. Thiết kế kỹ thuật
+
+### 5.1 Database (migration mới `2026_11_13_xxxxxx_*`)
+
+- `form_collaborators`: id, form_id (cascade), user_id (cascade), role enum('owner','editor','viewer'), added_by (nullable), timestamps, unique(form_id, user_id).
+  - Migration chèn mỗi form hiện có một dòng `owner` cho `forms.user_id`.
+  - `forms.user_id` được giữ làm "người tạo" để tương thích. Quyền chỉ lấy từ `form_collaborators`.
+- `form_invitations`: id, form_id, email(191), role enum('owner','editor','viewer'), token_hash(64, unique), invited_by, message (nullable), expires_at, accepted_at (nullable), accepted_by (nullable), timestamps.
+- `forms.revision` (unsigned bigint, mặc định 0): tăng sau mỗi lô thao tác.
+- `form_changes`: id (bigint tự tăng), form_id, revision, user_id, client_id(64), ops json, created_at, index(form_id, revision). Tự dọn bản ghi cũ hơn 24 giờ bằng lệnh schedule.
+- `form_presence`: form_id, user_id, client_id, active_field_key (nullable), last_seen_at, primary(form_id, client_id). Có thể chuyển sang cache sau.
+
+### 5.2 Kiểm tra quyền tập trung
+
+- `App\Policies\FormPolicy` với các ability `view`, `update`, `manageResponses`, `share`, `manageOwners`, `delete`. Thêm quan hệ `Form::collaborators()`, `Form::roleFor(User)`, `User::sharedForms()`.
+- Thay toàn bộ khoảng 15 chỗ kiểm tra `user_id` bằng `$this->authorize(...)` theo bảng quyền ở mục 4.8.
+- `FormController@index` trả cả form được chia sẻ, kèm `my_role` và `owner`.
+- Các response JSON của form trả thêm `my_role` để frontend ẩn/khóa thao tác.
+
+### 5.3 API mới
+
+| Method | Đường dẫn | Mục đích |
+|---|---|---|
+| GET | `/users/search?q=` | Gợi ý người dùng (≥3 ký tự, tối đa 8, chỉ trả id, tên, email), có throttle |
+| GET | `/forms/{form}/collaborators` | Danh sách người có quyền + lời mời đang chờ |
+| POST | `/forms/{form}/collaborators` | Thêm theo `user_id` hoặc `email` + `role` (+ `notify`, `message`). Email chưa có tài khoản thì tạo lời mời |
+| PATCH | `/forms/{form}/collaborators/{user}` | Đổi vai trò |
+| DELETE | `/forms/{form}/collaborators/{user}` | Gỡ quyền / tự rời |
+| POST | `/forms/{form}/invitations/{invitation}/resend` | Gửi lại email, gia hạn 7 ngày |
+| DELETE | `/forms/{form}/invitations/{invitation}` | Hủy lời mời |
+| GET | `/invitations/{token}` (công khai) | Thông tin lời mời: tên form, người mời, email, vai trò, email đã có tài khoản chưa |
+| POST | `/invitations/{token}/accept` | Nhận lời mời (đã đăng nhập, đúng email) |
+| POST | `/register` (sửa) | Nhận thêm `invite_token`: email phải khớp lời mời, đăng ký xong thì nhận lời mời và trả `form_id` |
+| POST | `/forms/{form}/ops` | Gửi lô thao tác `{client_id, base_revision, ops[]}`. Trả `{revision, applied, rejected[]}` |
+| GET | `/forms/{form}/changes?since=&client_id=&active_field=` | Thao tác của người khác từ `since` + danh sách hiện diện. Đồng thời ghi nhận hiện diện. Trả `{revision, changes[], presence[], reset?}` |
+
+- `bulk-update` cũ được giữ cho các luồng khác (nhân bản…), trang sửa không dùng nữa.
+
+### 5.4 Thao tác (ops)
+
+Định danh câu hỏi bằng `key`.
+
+- `field.insert {key, after_key, data}`
+- `field.update {key, set: {prop: value}}`: chỉ các thuộc tính thay đổi, ai đến sau thắng theo từng thuộc tính
+- `field.delete {key}`
+- `field.move {key, after_key}`: server sắp lại `order` theo thứ tự gửi đến
+- `form.update {set: {title|description|theme props|settings props}}`
+
+Quy tắc:
+
+- Server áp cả lô trong một transaction, kiểm tra dữ liệu bằng cùng các quy tắc `FormFieldController` đang dùng (tách ra dùng chung), rồi ghi `form_changes`.
+- Một thao tác lỗi thì trả trong `rejected` kèm lý do, các thao tác khác vẫn được áp.
+- Câu hỏi đã bị xóa mà vẫn nhận `field.update`: bỏ qua và báo lại cho client.
+- Các thao tác trên phần ngẫu nhiên (khối nhiều câu) được biểu diễn bằng nhiều thao tác cơ bản trong cùng một lô.
+
+### 5.5 Frontend: cấu trúc mới
+
+- `layouts/FormEditorLayout.jsx`: tải form, giữ store, render `EditorHeader` + `<Outlet/>` cho 3 tab.
+- `components/editor/`:
+  - `EditorHeader.jsx`, `HeaderIconButton.jsx` + `Tooltip.jsx`
+  - `StatusBadge.jsx`, `SaveIndicator.jsx`
+  - `PublishButton.jsx` (popover), `PresenceAvatars.jsx`
+  - `ShareDialog.jsx`, `DestructiveBanner.jsx`
+- `store/formStore.js` được viết lại quanh thao tác. Mỗi hành động hiện có (`updateField`, `insertFields`, `removeField`, `duplicateField`, `reorderFields`…) sinh `ops` + `inverseOps`, đẩy vào hàng đợi lưu và lịch sử hoàn tác. Thêm `applyRemoteOps`.
+- `services/autosave.js` (hàng đợi, debounce, thử lại, keepalive), `services/syncTransport.js` (polling, sau này WebSocket), `utils/ops.js` (áp/đảo thao tác, dùng chung cho cục bộ và từ xa).
+- `pages/forms/FormSettingsTab.jsx` (tách nội dung từ `FormSettings.jsx`), `pages/Invite.jsx`. `Register.jsx`/`Login.jsx` nhận `?invite=`.
+- `App.jsx`: route lồng `/forms/:id` → `edit | responses | responses/:responseId | settings`, thêm `/invite/:token`.
+
+---
+
+## 6. Thứ tự làm và kiểm thử
+
+| Giai đoạn | Kiểm thử khi xong |
+|---|---|
+| 1 | PHPUnit: bảng quyền 3 vai trò trên mọi endpoint; không thể gỡ Chủ sở hữu cuối cùng; lời mời hết hạn, dùng lại, sai email; đăng ký với `invite_token`; tìm người dùng (độ dài tối thiểu, giới hạn kết quả, không lộ trường thừa) |
+| 2 | PHPUnit: áp lô thao tác, ai đến sau thắng theo thuộc tính, thao tác trên câu đã xóa, `changes?since=` loại thao tác của chính client, dọn nhật ký, hiện diện hết hạn |
+| 3 | Script E2E: thứ tự nút, tooltip, chuyển 3 tab không tải lại form, quyền hiển thị theo vai trò, mobile 390px |
+| 4 | Kiểm tra logic `utils/ops.js` (áp + đảo + gộp gõ chữ) + E2E: sửa rồi chờ thì lưu, tải lại vẫn còn; hoàn tác/làm lại qua nút và phím tắt; thanh cảnh báo phá dữ liệu |
+| 5 | E2E hai phiên trình duyệt (hai tài khoản): thay đổi hiện ở phiên kia trong khoảng 3 giây, cùng sửa một câu, ô đang gõ không bị ghi đè, avatar/viền hiện diện |
+| 6 | E2E: mời người có tài khoản / chưa có tài khoản → đăng ký → vào form; đổi vai trò; quyền truy cập chung đồng bộ với tab Cài đặt |
+| 7 | Chạy lại toàn bộ PHPUnit + các script E2E đã có của dự án (đợt Phần ngẫu nhiên) để bảo đảm không hỏng |
+
+- Các script E2E đặt trong `tools/`, in bảng tóm tắt (chỉ lỗi), chi tiết ghi ra file.
+- Cập nhật mục 1 của file này sau mỗi giai đoạn.
+
+---
+
+## 7. Câu hỏi còn mở / rủi ro
+
+- **SMTP production:** cần thông tin máy chủ gửi mail (host, port, tài khoản, địa chỉ gửi) để bật gửi email. Trước khi có, hệ thống vẫn chạy bằng link mời.
+- **Sửa form đã xuất bản:** mặc định thay đổi có hiệu lực ngay với người trả lời (giống hiện tại). Nếu muốn kiểu "bản nháp riêng, bấm Xuất bản lại mới áp dụng" thì đó là phạm vi riêng, lớn hơn.
+- **Đồng bộ bằng polling:** độ trễ khoảng 2–3 giây, và mỗi người đang mở form gửi một request mỗi 2,5 giây. Ổn với quy mô hiện tại. Khi cần tức thời hoặc nhiều người cùng lúc thì chuyển sang Reverb.
+- **Cùng sửa một ô văn bản:** ai lưu sau thắng ở mức cả ô, không gộp từng ký tự như Google Docs.
+- **Dữ liệu cũ:** migration gán Chủ sở hữu cho mọi form hiện có. Cần sao lưu DB trước khi chạy trên production.

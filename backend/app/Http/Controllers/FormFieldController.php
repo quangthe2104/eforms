@@ -4,7 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\Form;
 use App\Models\FormField;
+use App\Services\Forms\FieldReferenceValidator;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class FormFieldController extends Controller
 {
@@ -140,34 +143,55 @@ class FormFieldController extends Controller
         }
 
         $request->validate([
-            'fields' => 'required|array',
+            'fields' => 'present|array',
+            'fields.*.key' => 'nullable|string|max:64',
+            'fields.*.settings' => 'nullable|array',
+            'fields.*.conditional_logic' => 'nullable|array',
+            'fields.*.random_group_key' => 'nullable|string|max:64',
+            'fields.*.variant_key' => 'nullable|string|max:64',
         ]);
 
-        // Collect IDs of fields that should be kept
-        $keptFieldIds = [];
-
-        foreach ($request->fields as $fieldData) {
-            if (isset($fieldData['id'])) {
-                // Update existing field
-                $field = FormField::where('id', $fieldData['id'])
-                    ->where('form_id', $form->id)
-                    ->first();
-                
-                if ($field) {
-                    $field->update($fieldData);
-                    $keptFieldIds[] = $field->id;
-                }
-            } else {
-                // Create new field
-                $newField = FormField::create(array_merge($fieldData, ['form_id' => $form->id]));
-                $keptFieldIds[] = $newField->id;
+        $existing = FormField::where('form_id', $form->id)->get()->keyBy('id');
+        $fields = [];
+        foreach (array_values($request->fields) as $fieldData) {
+            unset($fieldData['form_id']);
+            $current = isset($fieldData['id']) ? $existing->get($fieldData['id']) : null;
+            if (!$current) {
+                unset($fieldData['id']);
             }
+            if (empty($fieldData['key'])) {
+                $fieldData['key'] = $current->key ?? (string) Str::uuid();
+            }
+            $fields[] = $fieldData;
         }
 
-        // Delete fields that are not in the kept list
-        FormField::where('form_id', $form->id)
-            ->whereNotIn('id', $keptFieldIds)
-            ->delete();
+        $errors = (new FieldReferenceValidator())->validate($fields);
+        if ($errors !== []) {
+            return response()->json([
+                'message' => 'Cấu hình câu hỏi chưa hợp lệ.',
+                'errors' => $errors,
+            ], 422);
+        }
+
+        DB::transaction(function () use ($form, $fields, $existing) {
+            $keptIds = array_filter(array_column($fields, 'id'));
+            FormField::where('form_id', $form->id)->whereNotIn('id', $keptIds)->delete();
+
+            // Park kept keys first so keys can move between fields without hitting the unique index.
+            foreach ($fields as $fieldData) {
+                if (isset($fieldData['id']) && $existing[$fieldData['id']]->key !== $fieldData['key']) {
+                    FormField::whereKey($fieldData['id'])->update(['key' => (string) Str::uuid()]);
+                }
+            }
+
+            foreach ($fields as $fieldData) {
+                if (isset($fieldData['id'])) {
+                    FormField::find($fieldData['id'])->update($fieldData);
+                } else {
+                    FormField::create(array_merge($fieldData, ['form_id' => $form->id]));
+                }
+            }
+        });
 
         return response()->json([
             'message' => 'Fields updated successfully',
