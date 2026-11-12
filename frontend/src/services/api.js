@@ -117,6 +117,10 @@ export const authAPI = {
     await getCsrfCookie()
     return api.post('/login', data)
   },
+  google: async (credential) => {
+    await getCsrfCookie()
+    return api.post('/auth/google', { credential })
+  },
   logout: async () => {
     try {
       await getCsrfCookie()

@@ -1,11 +1,13 @@
 import { useEffect, useState, useRef } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { formAPI } from '../../services/api'
-import { Plus, Trash2, Copy, Edit, Eye, ChevronDown, MoreVertical, Share2, BarChart3, CheckCircle, Users } from 'lucide-react'
+import { Plus, Trash2, Copy, Edit, Eye, ChevronDown, MoreVertical, UserPlus, Link2, BarChart3, CheckCircle, Users } from 'lucide-react'
 import toast from 'react-hot-toast'
 import FormThumbnail from '../../components/FormThumbnail'
 import Tooltip from '../../components/editor/Tooltip'
+import ShareDialog from '../../components/editor/ShareDialog'
 import { ROLE_LABELS } from '../../utils/roles'
+import { copyText } from '../../utils/clipboard'
 import { useAuthStore } from '../../store/authStore'
 
 // `GET /forms?filter=`: "mine" = I am an owner, "shared" = I am an editor/viewer.
@@ -26,6 +28,7 @@ export default function FormList() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [filterDropdownOpen, setFilterDropdownOpen] = useState(false)
   const [activeMenuFormId, setActiveMenuFormId] = useState(null)
+  const [shareFormId, setShareFormId] = useState(null)
   const filterDropdownRef = useRef(null)
   const menuDropdownRef = useRef(null)
 
@@ -94,24 +97,34 @@ export default function FormList() {
     }
   }
 
-  const copyFormLink = (slug) => {
-    const link = `${window.location.origin}/f/${slug}`
-    
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(link)
-        .then(() => toast.success('Đã sao chép liên kết biểu mẫu!'))
-        .catch(() => toast.error('Không thể sao chép liên kết'))
-    } else {
-      // Fallback for older browsers
-      const textarea = document.createElement('textarea')
-      textarea.value = link
-      document.body.appendChild(textarea)
-      textarea.select()
-      document.execCommand('copy')
-      document.body.removeChild(textarea)
-      toast.success('Đã sao chép liên kết biểu mẫu!')
+  const copyFormLink = (form) => {
+    if (form.status === 'draft' || !form.slug) {
+      toast('Biểu mẫu chưa được xuất bản', { id: 'copy-link' })
+      return
+    }
+    copyText(`${window.location.origin}/f/${form.slug}`)
+      .then(() => toast.success('Đã sao chép liên kết biểu mẫu!', { id: 'copy-link' }))
+      .catch(() => toast.error('Không thể sao chép liên kết'))
+  }
+
+  const patchListForm = (id, patch) => setForms((prev) => prev.map((f) => (f.id === id ? { ...f, ...patch } : f)))
+
+  const updateShareSettings = async (patch) => {
+    const id = shareFormId
+    const keys = Object.keys(patch)
+    const pick = (obj) => Object.fromEntries(keys.map((k) => [k, obj?.[k]]))
+    const before = pick(forms.find((f) => f.id === id))
+    patchListForm(id, patch)
+    try {
+      const res = await formAPI.update(id, patch)
+      patchListForm(id, pick(res.data.form))
+    } catch {
+      patchListForm(id, before)
+      toast.error('Không thể lưu cài đặt')
     }
   }
+
+  const shareForm = forms.find((f) => f.id === shareFormId)
 
   const filteredForms = forms.filter(form =>
     form.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -236,7 +249,11 @@ export default function FormList() {
           filteredForms.map((form) => {
             const role = form.my_role || 'owner'
             const shared = role !== 'owner' || (form.collaborators_count || 0) > 1
-            const ownerName = form.owner?.name
+            const ownerName = form.owner && form.owner.id !== myId ? form.owner.name : null
+            const sharedLabel = role === 'owner'
+              ? `Đã chia sẻ với ${(form.collaborators_count || 1) - 1} người`
+              : `Được chia sẻ với bạn${ownerName ? ` · Chủ sở hữu: ${ownerName}` : ''}`
+            const published = form.status === 'published' && !!form.slug
             return (
             <div key={form.id} data-form-card={form.id} data-my-role={role} className="card hover:shadow-lg transition-all group overflow-hidden">
               {/* Thumbnail with Status Badge */}
@@ -273,59 +290,58 @@ export default function FormList() {
                   {form.title}
                 </h3>
 
-                {/* Date, sharing */}
+                {/* Date, sharing, my role */}
                 <div className="flex items-center gap-2 text-xs text-gray-500 min-w-0">
                   {shared && (
-                    <Tooltip label={role === 'owner' ? `Đã chia sẻ với ${(form.collaborators_count || 1) - 1} người` : 'Được chia sẻ với bạn'}>
-                      <span data-shared-icon tabIndex={0} aria-label="Đã chia sẻ" className="flex-shrink-0 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500">
+                    <Tooltip label={sharedLabel}>
+                      <span data-shared-icon tabIndex={0} aria-label={sharedLabel} className="flex-shrink-0 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500">
                         <Users className="w-3.5 h-3.5 text-gray-500" />
                       </span>
                     </Tooltip>
                   )}
-                  <span className="flex-shrink-0">{formatDate(form.updated_at || form.created_at)}</span>
-                </div>
-                <div className="flex items-center justify-between gap-2 text-xs min-w-0">
-                  <span className="text-gray-600 truncate" data-owner>
-                    Chủ sở hữu: {form.owner ? (form.owner.id === myId ? 'Tôi' : ownerName) : '—'}
-                  </span>
-                  <span data-role-badge className={`flex-shrink-0 px-1.5 py-0.5 rounded ${role === 'owner' ? 'bg-primary-50 text-primary-700' : role === 'editor' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                  <span className="truncate">{formatDate(form.updated_at || form.created_at)}</span>
+                  <span data-role-badge className={`ml-auto flex-shrink-0 px-1.5 py-0.5 rounded ${role === 'owner' ? 'bg-primary-50 text-primary-700' : role === 'editor' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
                     {ROLE_LABELS[role]}
                   </span>
                 </div>
 
                 {/* Action Buttons */}
-                <div className="pt-3 border-t border-gray-100 flex items-stretch gap-2">
+                <div className="pt-3 border-t border-gray-100 flex items-stretch gap-1.5">
                   {/* Results Button with Count */}
                   <Link
                     to={`/forms/${form.id}/responses`}
-                    className="btn btn-primary text-sm flex items-center justify-center space-x-1.5 py-2 px-4 min-w-[70px] h-[38px]"
+                    className="btn btn-primary text-sm flex items-center justify-center space-x-1.5 py-2 px-3 h-[38px] flex-shrink-0"
                     title={`${form.responses?.length || 0} phản hồi`}
                   >
                     <BarChart3 className="w-4 h-4" />
                     <span className="font-semibold">{form.responses?.length || 0}</span>
                   </Link>
-                  
-                  {/* Share Button */}
-                  {form.status === 'published' && form.slug ? (
-                    <button
-                      onClick={() => copyFormLink(form.slug)}
-                      className="flex-1 btn btn-secondary text-sm flex items-center justify-center space-x-1.5 py-2 h-[38px]"
-                      title="Chia sẻ"
-                    >
-                      <Share2 className="w-4 h-4" />
-                      <span>Chia sẻ</span>
-                    </button>
-                  ) : (
-                    <button
-                      disabled
-                      className="flex-1 btn btn-secondary text-sm flex items-center justify-center space-x-1.5 py-2 h-[38px] opacity-50 cursor-not-allowed"
-                      title="Xuất bản để chia sẻ"
-                    >
-                      <Share2 className="w-4 h-4" />
-                      <span>Chia sẻ</span>
-                    </button>
-                  )}
-                  
+
+                  {/* Respondent link */}
+                  <button
+                    type="button"
+                    data-card-action="copy-link"
+                    onClick={() => copyFormLink(form)}
+                    disabled={!published}
+                    className="btn btn-secondary w-[36px] h-[38px] flex items-center justify-center p-0 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={published ? 'Sao chép đường liên kết của người trả lời' : 'Xuất bản để lấy đường liên kết'}
+                    aria-label="Sao chép đường liên kết của người trả lời"
+                  >
+                    <Link2 className="w-4 h-4" />
+                  </button>
+
+                  {/* Collaborators */}
+                  <button
+                    type="button"
+                    data-card-action="share"
+                    onClick={() => setShareFormId(form.id)}
+                    className="flex-1 min-w-0 btn btn-secondary text-sm flex items-center justify-center gap-1.5 py-2 px-2 h-[38px]"
+                    title="Chia sẻ với người chỉnh sửa"
+                  >
+                    <UserPlus className="w-4 h-4 flex-shrink-0" />
+                    <span className="truncate">Chia sẻ</span>
+                  </button>
+
                   {/* More Menu */}
                   <div className="relative" ref={activeMenuFormId === form.id ? menuDropdownRef : null}>
                     <button
@@ -333,7 +349,7 @@ export default function FormList() {
                         e.stopPropagation()
                         setActiveMenuFormId(activeMenuFormId === form.id ? null : form.id)
                       }}
-                      className="btn btn-secondary text-sm w-[40px] h-[38px] flex items-center justify-center p-0"
+                      className="btn btn-secondary text-sm w-[36px] h-[38px] flex items-center justify-center p-0"
                       title="Tùy chọn"
                     >
                       <MoreVertical className="w-4 h-4" />
@@ -389,6 +405,26 @@ export default function FormList() {
           })
         )}
       </div>
+
+      {shareForm && (
+        <ShareDialog
+          formId={shareForm.id}
+          title={shareForm.title}
+          role={shareForm.my_role || 'owner'}
+          form={shareForm}
+          onUpdateSettings={updateShareSettings}
+          onClose={() => {
+            setShareFormId(null)
+            fetchForms()
+          }}
+          onCopyLink={() => copyFormLink(shareForm)}
+          onRoleChanged={(next) => patchListForm(shareForm.id, { my_role: next })}
+          onLeft={() => {
+            setShareFormId(null)
+            fetchForms()
+          }}
+        />
+      )}
     </div>
   )
 }

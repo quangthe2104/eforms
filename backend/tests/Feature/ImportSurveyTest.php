@@ -35,7 +35,8 @@ class ImportSurveyTest extends TestCase
         $fields = $form->fields()->get();
 
         $this->assertSame('draft', $form->status);
-        $this->assertCount(33, $fields);
+        $this->assertCount(30, $fields);
+        $this->assertSame('long_text', $this->field($info, 'q1')->type);
         $this->assertSame([], (new FieldReferenceValidator())->validate($fields->map->toArray()->all()));
 
         $header = $this->field($info, 'block');

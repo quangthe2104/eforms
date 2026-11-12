@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\FormInvitation;
 use App\Models\User;
+use App\Services\Auth\GoogleTokenVerifier;
 use App\Services\Forms\FormSharing;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -51,7 +52,7 @@ class AuthController extends Controller
 
         $data = [
             'message' => 'User registered successfully',
-            'user' => $user,
+            'user' => $user->withAuthFlags(),
             'token' => $token,
         ];
 
@@ -76,6 +77,12 @@ class AuthController extends Controller
 
         $user = User::where('email', $request->email)->first();
 
+        if ($user && $user->password === null) {
+            throw ValidationException::withMessages([
+                'email' => ['Tài khoản này đăng nhập bằng Google. Hãy dùng nút "Đăng nhập bằng Google" hoặc đặt mật khẩu trong Hồ sơ.'],
+            ]);
+        }
+
         if (!$user || !Hash::check($request->password, $user->password)) {
             throw ValidationException::withMessages([
                 'email' => ['The provided credentials are incorrect.'],
@@ -86,7 +93,64 @@ class AuthController extends Controller
 
         return response()->json([
             'message' => 'Login successful',
-            'user' => $user,
+            'user' => $user->withAuthFlags(),
+            'token' => $token,
+        ]);
+    }
+
+    /**
+     * Sign in with a Google ID token: find the user by Google `sub`, else link the account with the same
+     * (verified) email, else create one without a password.
+     */
+    public function google(Request $request, GoogleTokenVerifier $verifier)
+    {
+        $request->validate([
+            'credential' => 'required|string|max:4096',
+        ]);
+
+        $google = $verifier->verify($request->credential);
+
+        if ($google['email_verified'] !== true) {
+            throw ValidationException::withMessages([
+                'credential' => ['Email Google chưa được xác minh.'],
+            ]);
+        }
+
+        $user = User::where('google_id', $google['sub'])->first();
+
+        if (!$user) {
+            $user = User::whereRaw('LOWER(email) = ?', [mb_strtolower($google['email'])])->first();
+
+            if ($user) {
+                if ($user->google_id !== null) {
+                    throw ValidationException::withMessages([
+                        'credential' => ['Email này đã được liên kết với một tài khoản Google khác.'],
+                    ]);
+                }
+
+                $user->google_id = $google['sub'];
+                $user->email_verified_at ??= now();
+                $user->avatar ??= $google['picture'];
+                $user->save();
+            } else {
+                $user = new User([
+                    'name' => mb_substr($google['name'] ?: strstr($google['email'], '@', true), 0, 255),
+                    'email' => $google['email'],
+                    'google_id' => $google['sub'],
+                    'avatar' => $google['picture'],
+                    'role' => 'user',
+                ]);
+                $user->email_verified_at = now();
+                $user->save();
+                $user->refresh();
+            }
+        }
+
+        $token = $user->createToken('auth_token')->plainTextToken;
+
+        return response()->json([
+            'message' => 'Login successful',
+            'user' => $user->withAuthFlags(),
             'token' => $token,
         ]);
     }
@@ -109,7 +173,7 @@ class AuthController extends Controller
     public function me(Request $request)
     {
         return response()->json([
-            'user' => $request->user(),
+            'user' => $request->user()->withAuthFlags(),
         ]);
     }
 
@@ -129,7 +193,7 @@ class AuthController extends Controller
 
         return response()->json([
             'message' => 'Profile updated successfully',
-            'user' => $user,
+            'user' => $user->withAuthFlags(),
         ]);
     }
 
@@ -138,14 +202,15 @@ class AuthController extends Controller
      */
     public function changePassword(Request $request)
     {
+        $user = $request->user();
+        $hasPassword = $user->password !== null;
+
         $request->validate([
-            'current_password' => 'required',
+            'current_password' => $hasPassword ? 'required' : 'nullable',
             'password' => 'required|string|min:8|confirmed',
         ]);
 
-        $user = $request->user();
-
-        if (!Hash::check($request->current_password, $user->password)) {
+        if ($hasPassword && !Hash::check($request->current_password, $user->password)) {
             throw ValidationException::withMessages([
                 'current_password' => ['The provided password is incorrect.'],
             ]);

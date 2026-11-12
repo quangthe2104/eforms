@@ -105,8 +105,7 @@ try {
   await next(page).click()
   check('1 email required', (await errorOf(page, 'Email của Ông/Bà')) === 'Vui lòng trả lời câu hỏi này.')
   await card(page, 'Email của Ông/Bà').locator('input').fill(emailA)
-  await card(page, 'Câu 1 – Sự kiện 1').locator('input').fill('Cách mạng tháng Tám')
-  await card(page, 'Câu 1 – Sự kiện 2').locator('input').fill('Chưa nhớ được')
+  await card(page, 'Câu 1.').locator('textarea').fill('Cách mạng tháng Tám\nChưa nhớ được')
   await fillGrid(page, 'q2', (i) => (i === 3 ? 'Biết những nội dung cơ bản' : UNHEARD))
   await shot(page, 'p1')
   const assignRes = page.waitForResponse((r) => r.url().includes('/assign') && r.status() !== 419)
@@ -234,7 +233,7 @@ try {
   check('5 A5 has 17 rows', Object.keys(val('a5') || {}).length === 17)
   check('5 A7 has 3 choices', (val('a7') || []).length === 3)
   check('5 A2 stored', String(val('a2')) === '45')
-  check('5 Câu 1 slot 3 left empty', !ans('q1_3') || val('q1_3') === null || val('q1_3') === '')
+  check('5 Câu 1 single multi-line answer', val('q1')?.replace(/\r\n/g, '\n') === 'Cách mạng tháng Tám\nChưa nhớ được', ans('q1')?.value)
 
   // 6. Same email on another device is blocked when leaving page 1.
   step = '6'
@@ -283,9 +282,9 @@ try {
   writeFileSync(join(OUT, 'e2e-survey-headings.txt'), head.join('\n'))
   const mustHave = ['Căn cứ nhận diện', field('email').label, `${BLOCK_TITLE} – phiên bản`, `${field('q3').label} – Nội dung khác (xin ghi rõ)`, `${field('a4').label} – Khác (ghi rõ)`,
     ...gridRows('q2').map((r) => `${field('q2').label} – ${r}`), ...gridRows('a5').map((r) => `${field('a5').label} – ${r}`)]
-  check('8 export has 71 columns (grid rows split)', head.length === 71, `${head.length} (see out/e2e-survey-headings.txt)`)
+  check('8 export has 69 columns (grid rows split)', head.length === 69, `${head.length} (see out/e2e-survey-headings.txt)`)
   check('8 export key headings', mustHave.every((h) => head.includes(h)), mustHave.filter((h) => !head.includes(h)).join(' | '))
-  check('8 no columns for headings', !head.some((h) => /^PHẦN (I|III|IV)\.|^Câu 1\. Khi nghĩ/.test(h)))
+  check('8 no columns for headings', !head.some((h) => /^PHẦN (I|III|IV)\./.test(h)) && head.includes(field('q1').label))
   const rowA = sheet.rows.slice(1).map((r) => Object.fromEntries(head.map((h, i) => [h, r[i]?.v]))).find((r) => String(r['Mã câu trả lời']) === String(responseA.id))
   check('8 row A: event, email, age, identity', rowA?.[`${BLOCK_TITLE} – phiên bản`] === EVENT4 && rowA?.[field('email').label] === emailA
     && rowA?.[field('a2').label] === 45 && rowA?.['Căn cứ nhận diện'] === 'email', JSON.stringify(rowA)?.slice(0, 300))

@@ -162,15 +162,10 @@ class ImportSurvey1211 extends Command
                 'type' => 'description',
                 'label' => 'PHẦN I. NHẬN THỨC VÀ MỨC ĐỘ GHI NHỚ CÁC SỰ KIỆN LỊCH SỬ',
             ],
-            [
-                'key' => $this->key('q1_intro'),
-                'type' => 'description',
-                'label' => 'Câu 1. Khi nghĩ đến những sự kiện lịch sử hoặc ngày kỷ niệm lớn của Việt Nam, những sự kiện nào đầu tiên xuất hiện trong suy nghĩ của Ông/Bà?',
-                'description' => '<p>Xin ghi tên tối đa 3 sự kiện mà Ông/Bà nhớ đến đầu tiên, không cần tra cứu tài liệu hoặc xem lại danh sách gợi ý.</p><p>Nếu không nhớ được sự kiện cụ thể, Ông/Bà có thể ghi: <em>Chưa nhớ được</em>.</p>',
-            ],
-            $this->q('q1_1', 'short_text', 'Câu 1 – Sự kiện 1', ['placeholder' => 'Tên sự kiện thứ nhất']),
-            $this->q('q1_2', 'short_text', 'Câu 1 – Sự kiện 2', ['placeholder' => 'Tên sự kiện thứ hai']),
-            $this->q('q1_3', 'short_text', 'Câu 1 – Sự kiện 3', ['placeholder' => 'Tên sự kiện thứ ba']),
+            $this->q('q1', 'long_text', 'Câu 1. Khi nghĩ đến những sự kiện lịch sử hoặc ngày kỷ niệm lớn của Việt Nam, những sự kiện nào đầu tiên xuất hiện trong suy nghĩ của Ông/Bà?', [
+                'help_text' => "Xin ghi tên tối đa 3 sự kiện mà Ông/Bà nhớ đến đầu tiên, không cần tra cứu tài liệu hoặc xem lại danh sách gợi ý.\nNếu không nhớ được sự kiện cụ thể, Ông/Bà có thể ghi: Chưa nhớ được.",
+                'placeholder' => 'Mỗi sự kiện một dòng',
+            ]),
             $this->q('q2', 'multiple_choice_grid', 'Câu 2. Ông/Bà đã từng nghe nói, tìm hiểu hoặc theo dõi những sự kiện/ngày kỷ niệm dưới đây ở mức độ nào?', [
                 'help_text' => 'Xin đánh dấu một phương án cho mỗi sự kiện.',
                 'rows' => $eventRows,

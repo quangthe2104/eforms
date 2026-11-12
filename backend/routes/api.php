@@ -23,6 +23,7 @@ use App\Http\Controllers\ThumbnailController;
 // Public routes
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
+Route::post('/auth/google', [AuthController::class, 'google'])->middleware('throttle:10,1');
 
 // Public form routes (no auth required)
 Route::get('/forms/public/{slug}', [PublicFormController::class, 'show']);

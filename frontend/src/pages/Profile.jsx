@@ -95,6 +95,7 @@ export default function Profile() {
               <img 
                 src={user.avatar} 
                 alt={user?.name}
+                referrerPolicy="no-referrer"
                 className="w-24 h-24 rounded-full object-cover"
               />
             ) : (
@@ -119,6 +120,7 @@ export default function Profile() {
           <div>
             <h3 className="text-lg font-semibold text-gray-900">{user?.name}</h3>
             <p className="text-sm text-gray-600">{user?.email}</p>
+            {user?.has_google && <p className="text-xs text-green-600 mt-1">Đã liên kết Google</p>}
             <p className="text-xs text-gray-500 mt-1">Thành viên từ {new Date(user?.created_at || Date.now()).toLocaleDateString('vi-VN')}</p>
           </div>
         </div>

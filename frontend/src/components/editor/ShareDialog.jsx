@@ -353,15 +353,18 @@ function RoleControl({ person, myRole, ownerCount, busy, onChange, onLeave }) {
 }
 
 /** Share dialog like Google Forms (plan §4.8): people, pending invitations, general access. */
-export default function ShareDialog({ formId, title, role, onClose, onCopyLink, onRoleChanged, onLeft }) {
+/** Outside the editor pass `form` + `onUpdateSettings`; otherwise the editor store (autosave) is used. */
+export default function ShareDialog({ formId, title, role, form: formProp, onUpdateSettings, onClose, onCopyLink, onRoleChanged, onLeft }) {
   const dialogRef = useRef(null)
   const [data, setData] = useState(null)
   const [loadError, setLoadError] = useState(false)
   const [error, setError] = useState(null)
   const [busyId, setBusyId] = useState(null)
   const [links, setLinks] = useState([])
-  const form = useFormStore((s) => s.currentForm)
-  const updateSettings = useFormStore((s) => s.updateSettings)
+  const storeForm = useFormStore((s) => s.currentForm)
+  const storeUpdateSettings = useFormStore((s) => s.updateSettings)
+  const form = formProp || storeForm
+  const updateSettings = onUpdateSettings || storeUpdateSettings
   const roleRef = useRef(role)
   roleRef.current = role
   useDialogFocus(dialogRef, onClose)

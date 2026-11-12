@@ -22,6 +22,8 @@ class User extends Authenticatable
         'email',
         'password',
         'role',
+        'google_id',
+        'avatar',
     ];
 
     /**
@@ -32,6 +34,7 @@ class User extends Authenticatable
     protected $hidden = [
         'password',
         'remember_token',
+        'google_id',
     ];
 
     /**
@@ -60,6 +63,25 @@ class User extends Authenticatable
         return $this->belongsToMany(Form::class, 'form_collaborators')
             ->withPivot(['role', 'added_by'])
             ->withTimestamps();
+    }
+
+    /**
+     * Adds `has_password` / `has_google` for the signed-in user's own JSON. Not a global $appends: other
+     * endpoints serialize partially selected users of other people, where these flags would be wrong or leak.
+     */
+    public function withAuthFlags(): static
+    {
+        return $this->append(['has_password', 'has_google']);
+    }
+
+    public function getHasPasswordAttribute(): bool
+    {
+        return $this->password !== null;
+    }
+
+    public function getHasGoogleAttribute(): bool
+    {
+        return $this->google_id !== null;
     }
 
     /**

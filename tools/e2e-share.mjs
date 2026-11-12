@@ -169,7 +169,14 @@ try {
   const cardB = B.locator(`[data-form-card="${form.id}"]`)
   check('B: form under "Được chia sẻ"', await visible(cardB, 10000))
   if (await cardB.count()) {
-    check('B: card shows owner name', (await cardB.locator('[data-owner]').innerText()).includes(owner.user.name), await cardB.locator('[data-owner]').innerText())
+    const sharedLabel = await cardB.locator('[data-shared-icon]').getAttribute('aria-label')
+    check('B: shared icon names the owner', (sharedLabel || '').includes(owner.user.name), sharedLabel)
+    check('B: card share button opens dialog', await (async () => {
+      await cardB.locator('[data-card-action=share]').click()
+      const ok = await visible(B.locator('[data-share-dialog]'))
+      await B.locator('[data-share-done]').click().catch(() => {})
+      return ok
+    })())
     check('B: card shows my role', (await cardB.locator('[data-role-badge]').innerText()).includes('Người chỉnh sửa'))
     check('B: share icon', (await cardB.locator('[data-shared-icon]').count()) === 1)
     await cardB.locator('button[title="Tùy chọn"]').click()

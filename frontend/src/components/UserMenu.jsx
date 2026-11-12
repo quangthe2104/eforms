@@ -7,7 +7,7 @@ import Tooltip from './editor/Tooltip'
 
 export function UserAvatar({ user, size = 'w-9 h-9' }) {
   return user?.avatar ? (
-    <img src={user.avatar} alt={user?.name} className={`${size} rounded-full object-cover flex-shrink-0`} />
+    <img src={user.avatar} alt={user?.name} referrerPolicy="no-referrer" className={`${size} rounded-full object-cover flex-shrink-0`} />
   ) : (
     <div className={`${size} rounded-full bg-primary-600 text-white flex items-center justify-center font-medium text-sm flex-shrink-0`}>
       {user?.name?.charAt(0)?.toUpperCase() || 'U'}
@@ -17,11 +17,11 @@ export function UserAvatar({ user, size = 'w-9 h-9' }) {
 
 /** Account menu items, shared by the avatar dropdown and the editor's mobile ⋮ menu. */
 export function useAccountActions() {
-  const { logout } = useAuthStore()
+  const { user, logout } = useAuthStore()
   const navigate = useNavigate()
   return [
     { key: 'profile', label: 'Thông tin cá nhân', icon: User, onSelect: () => navigate('/profile') },
-    { key: 'password', label: 'Đổi mật khẩu', icon: Key, onSelect: () => navigate('/change-password') },
+    { key: 'password', label: user?.has_password === false ? 'Đặt mật khẩu' : 'Đổi mật khẩu', icon: Key, onSelect: () => navigate('/change-password') },
     { key: 'logout', label: 'Đăng xuất', icon: LogOut, danger: true, onSelect: async () => { await logout(); navigate('/login') } },
   ]
 }

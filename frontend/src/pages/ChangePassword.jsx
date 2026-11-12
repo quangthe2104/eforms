@@ -2,9 +2,17 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Lock, Eye, EyeOff, ShieldCheck } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { authAPI } from '../services/api'
+import { useAuthStore } from '../store/authStore'
+
+const MIN_LENGTH = 8
 
 export default function ChangePassword() {
   const navigate = useNavigate()
+  const { user, updateUser } = useAuthStore()
+  // Google-only accounts have no password yet: this page sets the first one.
+  const settingFirst = user?.has_password === false
+  const [errors, setErrors] = useState({})
   const [formData, setFormData] = useState({
     currentPassword: '',
     newPassword: '',
@@ -23,6 +31,7 @@ export default function ChangePassword() {
       ...prev,
       [name]: value
     }))
+    if (errors[name]) setErrors(prev => ({ ...prev, [name]: null }))
   }
 
   const togglePasswordVisibility = (field) => {
@@ -34,8 +43,8 @@ export default function ChangePassword() {
 
   const validatePassword = (password) => {
     // Kiểm tra độ dài tối thiểu
-    if (password.length < 6) {
-      return 'Mật khẩu phải có ít nhất 6 ký tự'
+    if (password.length < MIN_LENGTH) {
+      return `Mật khẩu phải có ít nhất ${MIN_LENGTH} ký tự`
     }
     return null
   }
@@ -44,7 +53,7 @@ export default function ChangePassword() {
     e.preventDefault()
 
     // Validate
-    if (!formData.currentPassword) {
+    if (!settingFirst && !formData.currentPassword) {
       toast.error('Vui lòng nhập mật khẩu hiện tại')
       return
     }
@@ -60,45 +69,55 @@ export default function ChangePassword() {
       return
     }
 
-    if (formData.currentPassword === formData.newPassword) {
+    if (!settingFirst && formData.currentPassword === formData.newPassword) {
       toast.error('Mật khẩu mới phải khác mật khẩu hiện tại')
       return
     }
 
     setLoading(true)
+    setErrors({})
 
     try {
-      // TODO: Gọi API đổi mật khẩu
-      // await userAPI.changePassword({
-      //   current_password: formData.currentPassword,
-      //   new_password: formData.newPassword,
-      // })
-      
-      // Tạm thời giả lập
-      setTimeout(() => {
-        toast.success('Đổi mật khẩu thành công!')
-        setFormData({
-          currentPassword: '',
-          newPassword: '',
-          confirmPassword: '',
-        })
-        setLoading(false)
-        // Redirect về trang forms sau 1s
-        setTimeout(() => {
-          navigate('/forms')
-        }, 1000)
-      }, 1000)
+      await authAPI.changePassword({
+        ...(!settingFirst && { current_password: formData.currentPassword }),
+        password: formData.newPassword,
+        password_confirmation: formData.confirmPassword,
+      })
+      updateUser({ has_password: true })
+      toast.success(settingFirst ? 'Đặt mật khẩu thành công!' : 'Đổi mật khẩu thành công!')
+      setFormData({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+      })
+      navigate('/forms')
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Có lỗi xảy ra khi đổi mật khẩu')
+      const data = error.response?.data
+      const fieldErrors = data?.errors || {}
+      setErrors({
+        currentPassword: fieldErrors.current_password?.[0],
+        newPassword: fieldErrors.password?.[0],
+      })
+      toast.error(
+        fieldErrors.current_password?.[0] || fieldErrors.password?.[0] || data?.message ||
+          (settingFirst ? 'Có lỗi xảy ra khi đặt mật khẩu' : 'Có lỗi xảy ra khi đổi mật khẩu')
+      )
+    } finally {
       setLoading(false)
     }
   }
 
+  const title = settingFirst ? 'Đặt mật khẩu' : 'Đổi mật khẩu'
+
   return (
     <div className="max-w-2xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Đổi mật khẩu</h1>
-        <p className="text-gray-600 mt-1">Cập nhật mật khẩu để bảo mật tài khoản của bạn</p>
+        <h1 className="text-3xl font-bold text-gray-900">{title}</h1>
+        <p className="text-gray-600 mt-1">
+          {settingFirst
+            ? 'Tài khoản của bạn đang đăng nhập bằng Google. Đặt mật khẩu để có thể đăng nhập bằng email.'
+            : 'Cập nhật mật khẩu để bảo mật tài khoản của bạn'}
+        </p>
       </div>
 
       <div className="card">
@@ -114,6 +133,7 @@ export default function ChangePassword() {
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-6">
           {/* Current Password */}
+          {!settingFirst && (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               <Lock className="w-4 h-4 inline mr-2" />
@@ -127,6 +147,7 @@ export default function ChangePassword() {
                 onChange={handleChange}
                 className="input pr-10"
                 placeholder="Nhập mật khẩu hiện tại"
+                aria-invalid={!!errors.currentPassword || undefined}
                 required
               />
               <button
@@ -137,13 +158,15 @@ export default function ChangePassword() {
                 {showPasswords.current ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
               </button>
             </div>
+            {errors.currentPassword && <p className="text-xs mt-1 text-red-600">{errors.currentPassword}</p>}
           </div>
+          )}
 
           {/* New Password */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               <Lock className="w-4 h-4 inline mr-2" />
-              Mật khẩu mới
+              {settingFirst ? 'Mật khẩu' : 'Mật khẩu mới'}
             </label>
             <div className="relative">
               <input
@@ -152,7 +175,8 @@ export default function ChangePassword() {
                 value={formData.newPassword}
                 onChange={handleChange}
                 className="input pr-10"
-                placeholder="Nhập mật khẩu mới (tối thiểu 6 ký tự)"
+                placeholder={`Nhập mật khẩu mới (tối thiểu ${MIN_LENGTH} ký tự)`}
+                aria-invalid={!!errors.newPassword || undefined}
                 required
               />
               <button
@@ -166,13 +190,14 @@ export default function ChangePassword() {
             {formData.newPassword && (
               <div className="mt-2">
                 <div className="flex items-center space-x-2 text-xs">
-                  <div className={`h-1 flex-1 rounded ${formData.newPassword.length >= 6 ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                  <div className={`h-1 flex-1 rounded ${formData.newPassword.length >= MIN_LENGTH ? 'bg-green-500' : 'bg-red-500'}`}></div>
                 </div>
-                <p className={`text-xs mt-1 ${formData.newPassword.length >= 6 ? 'text-green-600' : 'text-red-600'}`}>
-                  {formData.newPassword.length >= 6 ? 'Mật khẩu đủ mạnh' : 'Mật khẩu quá yếu'}
+                <p className={`text-xs mt-1 ${formData.newPassword.length >= MIN_LENGTH ? 'text-green-600' : 'text-red-600'}`}>
+                  {formData.newPassword.length >= MIN_LENGTH ? 'Mật khẩu đủ mạnh' : 'Mật khẩu quá yếu'}
                 </p>
               </div>
             )}
+            {errors.newPassword && <p className="text-xs mt-1 text-red-600">{errors.newPassword}</p>}
           </div>
 
           {/* Confirm Password */}
@@ -210,7 +235,7 @@ export default function ChangePassword() {
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <h4 className="text-sm font-semibold text-blue-900 mb-2">Mẹo bảo mật:</h4>
             <ul className="text-xs text-blue-800 space-y-1">
-              <li>• Sử dụng ít nhất 6 ký tự</li>
+              <li>• Sử dụng ít nhất {MIN_LENGTH} ký tự</li>
               <li>• Kết hợp chữ hoa, chữ thường, số và ký tự đặc biệt</li>
               <li>• Không sử dụng thông tin cá nhân dễ đoán</li>
               <li>• Không sử dụng mật khẩu đã dùng ở nơi khác</li>
@@ -224,7 +249,7 @@ export default function ChangePassword() {
               disabled={loading}
               className="btn btn-primary"
             >
-              {loading ? 'Đang cập nhật...' : 'Đổi mật khẩu'}
+              {loading ? 'Đang cập nhật...' : title}
             </button>
             <button
               type="button"

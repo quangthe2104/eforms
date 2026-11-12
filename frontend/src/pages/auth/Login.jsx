@@ -4,6 +4,7 @@ import { useAuthStore } from '../../store/authStore'
 import toast from 'react-hot-toast'
 import { Mail, Lock, Loader } from 'lucide-react'
 import InviteBanner, { useInvitation } from '../../components/InviteBanner'
+import GoogleSignInButton from '../../components/GoogleSignInButton'
 
 /** Only paths inside the app (ProtectedRoute passes where the user was going). */
 const safeNext = (path) => (typeof path === 'string' && path.startsWith('/') && !path.startsWith('//') ? path : null)
@@ -93,6 +94,10 @@ export default function Login() {
           )}
         </button>
       </form>
+
+      <GoogleSignInButton
+        redirectTo={invite ? `/invite/${encodeURIComponent(invite)}` : safeNext(location.state?.from) || '/forms'}
+      />
 
       <p className="text-center text-sm text-gray-600 mt-6">
         Chưa có tài khoản?{' '}

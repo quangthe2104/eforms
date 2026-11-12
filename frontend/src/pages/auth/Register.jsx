@@ -4,6 +4,7 @@ import { useAuthStore } from '../../store/authStore'
 import toast from 'react-hot-toast'
 import { Mail, Lock, User as UserIcon, Loader } from 'lucide-react'
 import InviteBanner, { useInvitation } from '../../components/InviteBanner'
+import GoogleSignInButton from '../../components/GoogleSignInButton'
 
 export default function Register() {
   const [searchParams] = useSearchParams()
@@ -150,6 +151,8 @@ export default function Register() {
           )}
         </button>
       </form>
+
+      <GoogleSignInButton redirectTo={invite ? `/invite/${encodeURIComponent(invite)}` : '/forms'} text="signup_with" />
 
       <p className="text-center text-sm text-gray-600 mt-6">
         Đã có tài khoản?{' '}
