@@ -6,7 +6,7 @@ import { useEditor } from '../../layouts/FormEditorLayout'
 import { normalizeFields } from '../../utils/formStructure'
 import { assignmentSummary } from '../../utils/responseView'
 import toast from 'react-hot-toast'
-import { Trash2, Eye, Calendar, FileSpreadsheet } from 'lucide-react'
+import { Trash2, Eye, Calendar, FileSpreadsheet, ChevronLeft, ChevronRight } from 'lucide-react'
 import { format } from 'date-fns'
 import FormSummary from '../../components/FormSummary'
 
@@ -18,15 +18,28 @@ export default function FormResponses() {
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
   const [activeTab, setActiveTab] = useState('summary') // 'summary' or 'individual'
+  const [page, setPage] = useState(1)
+  const [meta, setMeta] = useState({ total: 0, last_page: 1, from: 0, to: 0 })
 
   useEffect(() => {
-    fetchData()
-  }, [id])
+    fetchData(page)
+  }, [id, page])
 
-  const fetchData = async () => {
+  const fetchData = async (targetPage = page) => {
     try {
-      const responsesRes = await responseAPI.getAll(id)
-      setResponses(responsesRes.data.data || responsesRes.data)
+      const { data } = await responseAPI.getAll(id, { page: targetPage })
+      const rows = data.data || data
+      if (rows.length === 0 && targetPage > 1 && data.last_page < targetPage) {
+        setPage(data.last_page || 1)
+        return
+      }
+      setResponses(rows)
+      setMeta({
+        total: data.total ?? rows.length,
+        last_page: data.last_page ?? 1,
+        from: data.from ?? (rows.length ? 1 : 0),
+        to: data.to ?? rows.length,
+      })
     } catch (error) {
       toast.error('Không thể tải phản hồi')
     } finally {
@@ -58,7 +71,7 @@ export default function FormResponses() {
 
     try {
       await responseAPI.delete(id, responseId)
-      setResponses(responses.filter(r => r.id !== responseId))
+      await fetchData(page)
       const latest = useFormStore.getState().currentForm
       useFormStore.getState().patchForm({ responses: (latest?.responses || []).filter((r) => r.id !== responseId) })
       toast.success('Đã xóa phản hồi')
@@ -82,7 +95,7 @@ export default function FormResponses() {
     <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">{responses.length} câu trả lời</h1>
+        <h1 className="text-2xl font-bold text-gray-900">{meta.total} câu trả lời</h1>
 
         <button
           onClick={handleExport}
@@ -225,6 +238,32 @@ export default function FormResponses() {
                 </tbody>
               </table>
             </div>
+            {meta.last_page > 1 && (
+              <div className="flex items-center justify-between px-6 py-3 border-t border-gray-200 text-sm text-gray-600">
+                <span>
+                  {meta.from}–{meta.to} / {meta.total}
+                </span>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page <= 1}
+                    className="p-1.5 rounded border border-gray-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+                    title="Trang trước"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <span>Trang {page} / {meta.last_page}</span>
+                  <button
+                    onClick={() => setPage((p) => Math.min(meta.last_page, p + 1))}
+                    disabled={page >= meta.last_page}
+                    className="p-1.5 rounded border border-gray-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+                    title="Trang sau"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )
       )}
