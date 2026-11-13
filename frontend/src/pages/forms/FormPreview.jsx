@@ -208,8 +208,10 @@ export default function FormPreview() {
                   <span>Quay lại</span>
                 </button>
               )}
+              {/* Distinct keys: reusing one DOM button would turn the "Tiếp theo" click into a submit on the last page. */}
               {nextIndex !== undefined ? (
                 <button
+                  key="next"
                   type="button"
                   onClick={handleNext}
                   className="btn flex items-center justify-center space-x-2 transition-all px-8 py-2.5 rounded font-medium"
@@ -219,6 +221,7 @@ export default function FormPreview() {
                 </button>
               ) : (
                 <button
+                  key="submit"
                   type="submit"
                   className="btn flex items-center justify-center space-x-2 transition-all px-8 py-2.5 rounded font-medium"
                   style={{ backgroundColor: color, color: '#ffffff' }}

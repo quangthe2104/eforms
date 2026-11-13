@@ -55,6 +55,15 @@ export default function PublicForm() {
 
   useFormTheme(form)
 
+  useEffect(() => {
+    if (!form?.title) return
+    const previous = document.title
+    document.title = form.title
+    return () => {
+      document.title = previous
+    }
+  }, [form?.title])
+
   const rememberToken = (value) => {
     setToken(value || null)
     if (value) localStorage.setItem(tokenKey, value)
@@ -402,9 +411,11 @@ export default function PublicForm() {
                   </button>
                 )}
 
+                {/* Distinct keys: reusing one DOM button would turn the "Tiếp theo" click into a submit on the last page. */}
                 {nextIndex !== undefined ? (
                   !current?.pending && (
                     <button
+                      key="next"
                       type="button"
                       onClick={handleNext}
                       disabled={busy}
@@ -417,6 +428,7 @@ export default function PublicForm() {
                   )
                 ) : (
                   <button
+                    key="submit"
                     type="submit"
                     disabled={submitting || busy}
                     className="btn flex items-center justify-center space-x-2 transition-all px-8 py-2.5 rounded font-medium"
