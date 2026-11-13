@@ -318,7 +318,7 @@ export default function PublicForm() {
       <MessageScreen
         form={form}
         icon={<CheckCircle className="w-16 h-16 mx-auto mb-4" style={{ color: form.primary_color || '#10b981' }} />}
-        title={submitted.edited ? 'Đã cập nhật câu trả lời' : 'Cảm ơn bạn!'}
+        title={submitted.edited ? 'Đã cập nhật câu trả lời' : 'Trân trọng cảm ơn!'}
         message={form.custom_thank_you_message || 'Phản hồi của bạn đã được ghi nhận.'}
       />
     )

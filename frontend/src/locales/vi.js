@@ -83,7 +83,7 @@ export const vi = {
     pleasePublishFirst: 'Vui lòng xuất bản biểu mẫu trước khi chia sẻ',
     fillAllRequired: 'Vui lòng điền tất cả các trường bắt buộc',
     submittedSuccessfully: 'Đã gửi biểu mẫu thành công!',
-    thankYou: 'Cảm ơn bạn!',
+    thankYou: 'Trân trọng cảm ơn!',
     responseRecorded: 'Phản hồi của bạn đã được ghi nhận.',
   },
 
