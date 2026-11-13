@@ -1,0 +1,13 @@
+<!--
+  Site-wide snippets (live-only config, not in git).
+  On the host, copy this file to ~/public_html/frontend/snippets/head.html (inserted before </head>)
+  and/or create body.html (inserted before </body>). Every page gets them: the builder app and /f/<slug>.
+  Releases keep these files. After editing one, apply it without a release:
+    php ~/eforms-staging/tools/deploy/apply-snippets.php ~/public_html/frontend/dist/index.html
+-->
+<script async src="https://www.googletagmanager.com/gtm.js?id=GTM-XXXXXXX"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+</script>

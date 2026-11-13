@@ -35,6 +35,8 @@
 !/frontend/.env.example
 /frontend/.env.local
 /frontend/.env.production
+/frontend/snippets/*.html
+!/frontend/snippets/*.example.html
 /frontend/.DS_Store
 /frontend/npm-debug.log*
 /frontend/yarn-debug.log*

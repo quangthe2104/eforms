@@ -15,6 +15,7 @@ cd "$STAGE/frontend"
 npm ci --no-audit --no-fund --loglevel=error >>"$LOG" 2>&1
 npm run build >>"$LOG" 2>&1
 ls dist/index.html >/dev/null
+php "$STAGE/tools/deploy/apply-snippets.php" dist/index.html "$LIVE/frontend/snippets"
 
 step "backend dependencies"
 cd "$STAGE/backend"
