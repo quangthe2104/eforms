@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\FormPageController;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\File;
 
@@ -10,6 +11,9 @@ Route::get('/', function () {
         'docs' => '/api/documentation',
     ]);
 });
+
+// Respondent page shell with the form's title/Open Graph tags (the host rewrites /f/* here).
+Route::get('/f/{slug}', [FormPageController::class, 'show'])->where('slug', '[A-Za-z0-9_-]+');
 
 // Serve thumbnails from storage/thumbnails at project root
 Route::get('/storage/thumbnails/{filename}', function ($filename) {
