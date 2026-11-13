@@ -12,9 +12,12 @@ const SETTINGS_BY_TYPE = {
   dropdown: ['other_option', 'piped_from'],
   multiple_choice_grid: ['require_all_rows'],
   checkbox_grid: ['require_all_rows'],
-  number: ['number'],
-  email: ['store_hash_only'],
-  phone: ['store_hash_only'],
+  short_text: ['default_value'],
+  long_text: ['default_value'],
+  url: ['default_value'],
+  number: ['number', 'default_value'],
+  email: ['store_hash_only', 'default_value'],
+  phone: ['store_hash_only', 'default_value'],
   random_section: ['mode', 'pick_count', 'variants', 'filter', 'variant_label'],
 }
 

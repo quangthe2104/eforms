@@ -5,7 +5,7 @@ import { CheckCircle, Loader, Lock, AlertTriangle, Info } from 'lucide-react'
 import { responseAPI } from '../services/api'
 import { normalizeFields } from '../utils/formStructure'
 import {
-  evaluateForm, paginate, validatePages, submissionAnswers, filterAnswers, filterGroupsOnPage, pendingPageCount,
+  evaluateForm, paginate, validatePages, submissionAnswers, filterAnswers, filterGroupsOnPage, pendingPageCount, withDefaultAnswers,
 } from '../utils/formRuntime'
 import FormPageView from '../components/FormRenderer/FormPageView'
 import { useFormTheme, FormFrame, PageProgress } from '../components/FormRenderer/FormChrome'
@@ -133,6 +133,10 @@ export default function PublicForm() {
   const current = pages[pageIndex]
   const nextIndex = visibleIndexes.find((i) => i > pageIndex)
   const prevIndex = [...visibleIndexes].reverse().find((i) => i < pageIndex)
+
+  useEffect(() => {
+    setAnswers((prev) => withDefaultAnswers(pages, prev))
+  }, [pages])
 
   useEffect(() => {
     if (!pages.length || current?.visible) return

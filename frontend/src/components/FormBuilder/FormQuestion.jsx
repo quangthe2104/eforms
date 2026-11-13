@@ -10,6 +10,8 @@ import AdvancedOptions, { advancedSummary } from './AdvancedOptions'
 import Tooltip from '../editor/Tooltip'
 import { updateChoiceReferences, removeFieldAt, referencesTo, sanitizeSettings, shortLabel } from '../../utils/formStructure'
 
+const DEFAULT_VALUE_HINT = 'Chữ điền ở đây được điền sẵn làm câu trả lời; người trả lời có thể sửa.'
+
 const FIELD_TYPE_LABELS = {
   short_text: 'Văn bản ngắn',
   long_text: 'Văn bản dài',
@@ -130,6 +132,11 @@ function FormQuestion({ field, index, isActive, onSelect, theme }) {
   }
 
   const settings = editData.settings || {}
+  const setDefaultValue = (value) => {
+    const next = { ...settings, default_value: value }
+    if (value === '') delete next.default_value
+    handleUpdate({ settings: next })
+  }
   const otherOption = settings.other_option || {}
   const setOtherOption = (enabled) => {
     const next = { ...settings }
@@ -573,23 +580,33 @@ function FormQuestion({ field, index, isActive, onSelect, theme }) {
           <div className="eforms-input-wrapper" style={{ marginBottom: 0 }}>
             <input
               type="text"
+              data-prop="default_value"
+              value={settings.default_value || ''}
+              onChange={(e) => setDefaultValue(e.target.value)}
               placeholder={editData.placeholder || 'Câu trả lời văn bản ngắn'}
               className="eforms-answer-preview"
               disabled={!isActive}
-              onFocus={(e) => e.target.select()}
+              aria-label="Câu trả lời mặc định"
+              title={DEFAULT_VALUE_HINT}
             />
+            {isActive && <p className="mt-1 text-xs text-gray-400">{DEFAULT_VALUE_HINT}</p>}
           </div>
         )}
 
         {editData.type === 'long_text' && (
           <div className="eforms-input-wrapper" style={{ marginBottom: 0 }}>
             <textarea
+              data-prop="default_value"
+              value={settings.default_value || ''}
+              onChange={(e) => setDefaultValue(e.target.value)}
               placeholder={editData.placeholder || 'Câu trả lời văn bản dài'}
               className="eforms-answer-preview"
-              rows="3"
+              rows={Math.max(3, (settings.default_value || '').split('\n').length)}
               disabled={!isActive}
-              onFocus={(e) => e.target.select()}
+              aria-label="Câu trả lời mặc định"
+              title={DEFAULT_VALUE_HINT}
             />
+            {isActive && <p className="mt-1 text-xs text-gray-400">{DEFAULT_VALUE_HINT}</p>}
           </div>
         )}
 

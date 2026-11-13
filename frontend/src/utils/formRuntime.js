@@ -347,6 +347,25 @@ export function validatePages(pages, answers) {
   return errors
 }
 
+/**
+ * Prefills questions that have a default answer (settings.default_value) and were never answered.
+ * Returns `answers` itself when nothing changes, so it can run in an effect without looping;
+ * a respondent who clears the box keeps '' and is not prefilled again.
+ */
+export function withDefaultAnswers(pages, answers) {
+  let next = answers
+  for (const page of pages) {
+    if (page.pending) continue
+    for (const inst of page.items) {
+      const value = inst.field.settings?.default_value
+      if (typeof value !== 'string' || value === '' || answers[inst.answerKey] !== undefined) continue
+      if (next === answers) next = { ...answers }
+      next[inst.answerKey] = value
+    }
+  }
+  return next
+}
+
 /** Answers to send: visible questions only; "Other" text dropped when "Other" is not picked. */
 export function submissionAnswers(pages, answers) {
   const out = {}

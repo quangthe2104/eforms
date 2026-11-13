@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 import { Loader, X, RotateCcw } from 'lucide-react'
 import { formAPI } from '../../services/api'
 import { normalizeFields, variantsOf, shortLabel } from '../../utils/formStructure'
-import { evaluateForm, paginate, validatePages } from '../../utils/formRuntime'
+import { evaluateForm, paginate, validatePages, withDefaultAnswers } from '../../utils/formRuntime'
 import FormPageView from '../../components/FormRenderer/FormPageView'
 import { useFormTheme, FormFrame, PageProgress } from '../../components/FormRenderer/FormChrome'
 
@@ -69,6 +69,10 @@ export default function FormPreview() {
   const current = pages[pageIndex]
   const nextIndex = visibleIndexes.find((i) => i > pageIndex)
   const prevIndex = [...visibleIndexes].reverse().find((i) => i < pageIndex)
+
+  useEffect(() => {
+    setAnswers((prev) => withDefaultAnswers(pages, prev))
+  }, [pages])
 
   useEffect(() => {
     if (!pages.length || current?.visible) return
